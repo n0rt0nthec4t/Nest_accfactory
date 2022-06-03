@@ -1,0 +1,7 @@
+.dockerignore
+Dockerfile
+Nest_config.json
+*.sample
+*.MD
+.github
+.gitignore
