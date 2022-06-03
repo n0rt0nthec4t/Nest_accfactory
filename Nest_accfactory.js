@@ -24,7 +24,6 @@
 //
 // -- Nest Thermostat
 //      -- Correctly display F temps if selected. HomeKit bug??
-//      -- Switching between range (low/high) to heat or cool, update correct target temp. Maybe need to get from nest ??
 //      -- Childlock PIN set/clear based on a stored configuration??
 //      -- "Hey Siri, turn on the fan for x minutes"????
 //      -- Changes triggered from HomeKit when in ECO mode
@@ -56,6 +55,8 @@
 // -- dynamically create h264 frames for camera off and camera offline status
 // -- configuration options to adjust cooldown times for doorbell press, motion and person events
 // -- Preparation to use HAP-NodeJS as a library, rather than accessory factory as is now. Will allow for depreciation of HAP-NodeJS's Core.js
+// -- Option to change mDNS advertiser
+// -- Setting nest structure element updated to later entry point
 //
 // -- Nest Thermostat
 //      -- Migrated from NestThermostat_accfactory (v4) coding
@@ -76,6 +77,7 @@
 //      -- ECO mode temperatures reflect in HomeKit
 //      -- Dynamic code for external cooling/heating/fan/dehumidifier control
 //      -- Filter replacement status
+//      -- Switching between range (low/high) to heat or cool, update correct target temp
 //
 // -- Nest Temperature Sensor
 //      -- Online status for Nest Temperature sensors
@@ -129,6 +131,7 @@ var AudioRecordingCodecType = HAPNodeJS.AudioRecordingCodecType;
 var AudioRecordingSamplerate = HAPNodeJS. AudioRecordingSamplerate;
 var VideoCodecType = HAPNodeJS.VideoCodecType;
 var MediaContainerType = HAPNodeJS.MediaContainerType;
+var MDNSAdvertiser = HAPNodeJS.MDNSAdvertiser;
 
 // Define external lbrary requirements
 var axios = require("axios");
@@ -159,17 +162,18 @@ const AccessoryPincode = "031-45-154";
 const USERAGENT = "iPhone iOS 15.4 Dropcam/5.67.0.6 com.nestlabs.jasper.release Darwin";
 const REFERER = "https://home.nest.com"
 const CAMERAAPIHOST = "https://webapi.camera.home.nest.com";
-const NESTAPITIMEOUT = 10000;                               // Calls to Nest API timeout
-const CAMERAALERTPOLLING = 2000;                            // Camera alerts polling timer
-const CAMERAZONEPOLLING = 30000;                            // Camera zones changes polling timer
-const LOWBATTERYLEVEL = 10;                                 // Low battery level percentage
-const CONFIGURATIONFILE = "Nest_config.json";               // Default configuration file name, located in current directory
-const CAMERAOFFLINEJPGFILE = "Nest_camera_offline.jpg";     // Camera offline jpg image file
-const CAMERAOFFJPGFILE = "Nest_camera_off.jpg";             // Camera off jpg image file
-const CAMERAOFFLINEH264FILE = "Nest_camera_offline.h264";   // Camera offline H264 frame file
-const CAMERAOFFH264FILE = "Nest_camera_off.h264";           // Camera off H264 frame file
-const NESTSTRUCTURECHANGE = "structure";                    // Nest structure change event
-const MP4BOX = "mp4box";                                    // MP4 box fragement event
+const NESTAPITIMEOUT = 10000;                                   // Calls to Nest API timeout
+const CAMERAALERTPOLLING = 2000;                                // Camera alerts polling timer
+const CAMERAZONEPOLLING = 30000;                                // Camera zones changes polling timer
+const LOWBATTERYLEVEL = 10;                                     // Low battery level percentage
+const CONFIGURATIONFILE = "Nest_config.json";                   // Default configuration file name, located in current directory
+const CAMERAOFFLINEJPGFILE = "Nest_camera_offline.jpg";         // Camera offline jpg image file
+const CAMERAOFFJPGFILE = "Nest_camera_off.jpg";                 // Camera off jpg image file
+const CAMERAOFFLINEH264FILE = "Nest_camera_offline.h264";       // Camera offline H264 frame file
+const CAMERAOFFH264FILE = "Nest_camera_off.h264";               // Camera off H264 frame file
+const NESTSTRUCTURECHANGE = "structure";                        // Nest structure change event
+const MP4BOX = "mp4box";                                        // MP4 box fragement event
+const FFMPEGLIBARIES = ["libspeex", "libx264", "libfdk-aac"];   // List of ffmpeg libraries we require for doorbell/camera(s)
 
 // Available video codecs we can use
 const VideoCodecs = {
@@ -208,7 +212,6 @@ class NestClass extends EventEmitter {
         this.extraOptions = {};                     // Extra options per device to inject into Nest data stream
         this.cancel = null;
         this.startTime = null;                      // Time we started the object. used to filter out old alerts
-
         this.config = {                             // Configuration object
             debug : false,                          // Enable debug output, no by default
             refreshToken : "",                      // Session token. Used for Nest accounts
@@ -218,7 +221,8 @@ class NestClass extends EventEmitter {
             doorbellCooldown : 60000,               // Default cooldown period for doorbell button press (1min/60secs)
             motionCooldown : 60000,                 // Default cooldown period for motion detected (1min/60secs)
             personCooldown : 120000,                // Default cooldown person for person detected (2mins/120secs)
-            H264Encoder : VideoCodecs.COPY          // Default H264 Encoder for HKSV recording
+            H264Encoder : VideoCodecs.COPY,         // Default H264 Encoder for HKSV recording
+            mDNS : MDNSAdvertiser.CIAO              // Default mDNS advertiser for HAP-NodeJS library
         };
 
         // Load configuration
@@ -233,6 +237,10 @@ class NestClass extends EventEmitter {
                 if (key == "REFRESHTOKEN" && typeof value == "string") this.config.refreshToken = value;  // Google accounts refresh token to use for Nest calls
                 if (key == "DEBUG" && typeof value == "boolean") this.config.debug = value;  // Debugging output
                 if (key == "HKSV" && typeof value == "boolean") this.config.HKSV = value;    // Global HomeKit Secure Video?
+                if (key == "MDNS" && typeof value == "string") {
+                    if (value.toUpperCase() == "BONJOUR") this.config.mDNS = MDNSAdvertiser.BONJOUR;    // Use bonjour as the mDNS advertiser
+                    if (value.toUpperCase() == "AVAHI") this.config.mDNS = MDNSAdvertiser.AVAHI;    // Use avahi as the mDNS advertiser
+                }
                 if (key == "H264ENCODER" && typeof value == "string") {
                     if (value.toUpperCase() == "LIBX264") this.config.H264Encoder = VideoCodecs.LIBX264;  // Use libx264, software encoder
                     if (value.toUpperCase() == "H264_OMX") this.config.H264Encoder =  VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
@@ -489,9 +497,10 @@ ThermostatClass.prototype.addThermostat = function(HomeKitAccessory, thisService
 ThermostatClass.prototype.setFan = function(value, callback) {
     this.updatingHomeKit = true;
 
-    this.FanService.updateCharacteristic(Characteristic.On, value);
+    this.nestObject.config.debug && console.debug("[NEST] Set fan on thermostat '%s' to '%s'", this.nestObject.nestDevices[this.deviceID].mac_address, (value == true ? "On" : "Off"));
     this.nestObject.setNestStructure("device." + this.deviceStructure.split('.')[1], "fan_timer_timeout", value == false ? 0 : this.nestObject.nestDevices[this.deviceID].fan_duration + Math.floor(new Date() / 1000));
-
+    
+    this.FanService.updateCharacteristic(Characteristic.On, value);
     if (typeof callback === "function") callback();  // do callback if defined
     this.updatingHomeKit = false;
 }
@@ -505,8 +514,10 @@ ThermostatClass.prototype.setDisplayUnits = function(value, callback) {
     this.ThermostatService.getCharacteristic(Characteristic.CoolingThresholdTemperature).setProps({minStep: (value == Characteristic.TemperatureDisplayUnits.CELSIUS ? 0.5 : 1)}, {minValue: (value == Characteristic.TemperatureDisplayUnits.CELSIUS ? 9 : 48)}, {maxValue: (value == Characteristic.TemperatureDisplayUnits.CELSIUS ? 9 : 90)});
     this.ThermostatService.getCharacteristic(Characteristic.HeatingThresholdTemperature).setProps({minStep: (value == Characteristic.TemperatureDisplayUnits.CELSIUS ? 0.5 : 1)}, {minValue: (value == Characteristic.TemperatureDisplayUnits.CELSIUS ? 9 : 48)}, {maxValue: (value == Characteristic.TemperatureDisplayUnits.CELSIUS ? 9 : 90)});
 
-    this.ThermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, value);
+    this.nestObject.config.debug && console.debug("[NEST] Set temperature units on thermostat '%s' to '%s'", this.nestObject.nestDevices[this.deviceID].mac_address, (value == Characteristic.TemperatureDisplayUnits.CELSIUS ? "°C" : "°F"));
     this.nestObject.setNestStructure("device." + this.deviceStructure.split('.')[1], "temperature_scale", value == Characteristic.TemperatureDisplayUnits.CELSIUS ? "C" : "F");
+   
+    this.ThermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, value);
     if (typeof callback === "function") callback();  // do callback if defined
 
     this.updatingHomeKit = false;
@@ -550,7 +561,10 @@ ThermostatClass.prototype.setMode = function(value, callback) {
         }
 
         if (tempValue != null && tempMode != "") {
-            this.nestObject.setNestStructure("shared." + this.deviceStructure.split('.')[1], "target_temperature_type", tempMode, false);
+            this.nestObject.nestDevices[this.deviceID].target_temperature_type = tempMode;
+            this.nestObject.nestDevices[this.deviceID].target_change_pending = true;
+            this.nestObject.config.debug && console.debug("[NEST] Set thermostat on '%s' to '%s'", this.nestObject.nestDevices[this.deviceID].mac_address, tempMode);
+            this.nestObject.setNestStructure("shared." + this.deviceStructure.split('.')[1], "target_temperature_type", tempMode, true);
             this.ThermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, tempValue);
             
             if (typeof this.nestObject.previousDevices[this.deviceID] == "object" && typeof this.nestObject.nestDevices[this.deviceID] == "object" && this.nestObject.previousDevices[this.deviceID].target_temperature_type == "range" && (tempMode == "heat" || tempMode == "cool")) {
@@ -567,14 +581,19 @@ ThermostatClass.prototype.setMode = function(value, callback) {
 ThermostatClass.prototype.setTemperature = function(characteristic, value, callback) {
     this.updatingHomeKit = true;
 
+    var tempValue = __adjustTemperature(value, "C", "C");
+
     if (characteristic == Characteristic.TargetTemperature && this.ThermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState).value != Characteristic.TargetHeatingCoolingState.AUTO) {
-        this.nestObject.setNestStructure("shared." + this.deviceStructure.split('.')[1], "target_temperature", __adjustTemperature(value, "C", "C"), false);
+        this.nestObject.config.debug && console.debug("[NEST] Set thermostat %s temperature on '%s' to '%s °C'", (this.ThermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState).value == Characteristic.TargetHeatingCoolingState.HEAT ? "heating" : "cooling"), this.nestObject.nestDevices[this.deviceID].mac_address, tempValue);
+        this.nestObject.setNestStructure("shared." + this.deviceStructure.split('.')[1], "target_temperature", tempValue, true);
     }
     if (characteristic == Characteristic.HeatingThresholdTemperature && this.ThermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState).value == Characteristic.TargetHeatingCoolingState.AUTO) {
-        this.nestObject.setNestStructure("shared." + this.deviceStructure.split('.')[1], "target_temperature_low", __adjustTemperature(value, "C", "C"), false);
+        this.nestObject.config.debug && console.debug("[NEST] Set maximum heating temperature on thermostat '%s' to '%s °C'", this.nestObject.nestDevices[this.deviceID].mac_address, tempValue);
+        this.nestObject.setNestStructure("shared." + this.deviceStructure.split('.')[1], "target_temperature_low", tempValue, true);
     }
     if (characteristic == Characteristic.CoolingThresholdTemperature && this.ThermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState).value == Characteristic.TargetHeatingCoolingState.AUTO) {
-        this.nestObject.setNestStructure("shared." + this.deviceStructure.split('.')[1], "target_temperature_high", __adjustTemperature(value, "C", "C"), false);
+        this.nestObject.config.debug && console.debug("[NEST] Set minimum cooling temperature on thermostat '%s' to '%s °C'", this.nestObject.nestDevices[this.deviceID].mac_address, tempValue);
+        this.nestObject.setNestStructure("shared." + this.deviceStructure.split('.')[1], "target_temperature_high", tempValue, true);
     }
 
     this.ThermostatService.updateCharacteristic(characteristic, value);  // Update HomeKit with value
@@ -595,6 +614,7 @@ ThermostatClass.prototype.setChildlock = function(pin, value, callback) {
     if (value == Characteristic.LockPhysicalControls.CONTROL_LOCK_DISABLED) {
         // Clear pin hash????
     }
+    this.nestObject.config.debug && console.debug("[NEST] Setting Childlock on '%s' to '%s'", this.nestObject.nestDevices[this.deviceID].mac_address, (value == Characteristic.LockPhysicalControls.CONTROL_LOCK_ENABLED ? "Enabled" : "Disabled"));
     this.nestObject.setNestStructure("device." + this.deviceStructure.split('.')[1], "temperature_lock", value == Characteristic.LockPhysicalControls.CONTROL_LOCK_ENABLED ? true : false);
     
     if (typeof callback === "function") callback();  // do callback if defined
@@ -722,15 +742,15 @@ ThermostatClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData)
                 this.ThermostatService.updateCharacteristic(Characteristic.TargetHeatingCoolingState, Characteristic.TargetHeatingCoolingState.OFF);
                 historyEntry.target = {low: 0, high: 0};    // thermostat off, so no target temperatures
             }
-
+        
             // Update current state
             if (deviceData.hvac_state.toUpperCase() == "HEATING") {
                 if (deviceData.previous_hvac_state.toUpperCase() == "COOLING" && typeof deviceData.externalCool == "object") {
-                    // Switched to heating mode and external cooling URL was being used, so stop cooling via cooling external code
+                    // Switched to heating mode and external cooling external code was being used, so stop cooling via cooling external code
                     if (typeof deviceData.externalCool.off == "function") deviceData.externalCool.off(this.nestObject.config.debug);
                 }
                 if (deviceData.previous_hvac_state.toUpperCase() != "HEATING" && typeof deviceData.externalHeat == "object") {
-                    // Switched to heating mode and external heating URL is being used, so start heating via heating external code
+                    // Switched to heating mode and external heating external code is being used, so start heating via heating external code
                     if (typeof deviceData.externalHeat.heat == "function") deviceData.externalHeat.heat(deviceData.target_temperature, this.nestObject.config.debug);
                 }
                 this.ThermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, Characteristic.CurrentHeatingCoolingState.HEAT);
@@ -738,11 +758,11 @@ ThermostatClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData)
             }
             if (deviceData.hvac_state.toUpperCase() == "COOLING") {
                 if (deviceData.previous_hvac_state.toUpperCase() == "HEATING" && typeof deviceData.externalHeat == "object") {
-                    // Switched to cooling mode and external heating URL was being used, so stop heating via heating external code
+                    // Switched to cooling mode and external heating external code was being used, so stop heating via heating external code
                     if (typeof deviceData.externalHeat.off == "function") deviceData.externalHeat.off(this.nestObject.config.debug);
                 }
                 if (deviceData.previous_hvac_state.toUpperCase() != "COOLING" && typeof deviceData.externalCool == "object") {
-                    // Switched to cooling mode and external cooling URL is being used, so start cooling via cooling external code
+                    // Switched to cooling mode and external cooling external code is being used, so start cooling via cooling external code
                     if (typeof deviceData.externalCool.cool == "function") deviceData.externalCool.cool(deviceData.target_temperature, this.nestObject.config.debug);
                 }
                 this.ThermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, Characteristic.CurrentHeatingCoolingState.COOL);
@@ -750,11 +770,11 @@ ThermostatClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData)
             }
             if (deviceData.hvac_state.toUpperCase() == "OFF") {
                 if (deviceData.previous_hvac_state.toUpperCase() == "COOLING" && typeof deviceData.externalCool == "object") {
-                    // Switched to off mode and external cooling URL was being used, so stop cooling via cooling external code
+                    // Switched to off mode and external cooling external code was being used, so stop cooling via cooling external code
                     if (typeof deviceData.externalCool.off == "function") deviceData.externalCool.off(this.nestObject.config.debug);
                 }
                 if (deviceData.previous_hvac_state.toUpperCase() == "HEATING" && typeof deviceData.externalHeat == "object") {
-                    // Switched to off mode and external heating URL was being used, so stop heating via heating external code
+                    // Switched to off mode and external heating external code was being used, so stop heating via heating external code
                     if (typeof deviceData.externalHeat.heat == "function") deviceData.externalHeat.off(this.nestObject.config.debug);
                 }
                 this.ThermostatService.updateCharacteristic(Characteristic.CurrentHeatingCoolingState, Characteristic.CurrentHeatingCoolingState.OFF);
@@ -762,19 +782,27 @@ ThermostatClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData)
             }
             if (this.FanService != null) {
                 if (deviceData.previous_fan_state = false && deviceData.fan_state == true && typeof deviceData.externalFan == "object") {
-                    // Fan mode was switched on and external fan URL is being used, so start fan via fan URL
+                    // Fan mode was switched on and external fan external code is being used, so start fan via fan external code
                     if (typeof deviceData.externalFan.fan == "function") deviceData.externalFan.fan(0, this.nestObject.config.debug);    // Fan speed will be auto
                 }
                 if (deviceData.previous_fan_state == true && deviceData.fan_state == false && typeof deviceData.externalFan == "object") {
-                    // Fan mode was switched off and external fan URL was being used, so stop fan via fan URL
+                    // Fan mode was switched off and external fan external code was being used, so stop fan via fan external code
                     if (typeof deviceData.externalFan.off == "function") deviceData.externalFan.off(this.nestObject.config.debug);
                 }
-
                 this.FanService.updateCharacteristic(Characteristic.On, deviceData.fan_state);   // fan status on or off
                 historyEntry.status = 1;    // fan
             }
             if (this.DehumidifierService != null) {
+                if (deviceData.previous_dehumidifier_state = false && deviceData.dehumidifier_state == true && typeof deviceData.externalDehumidifier == "object") {
+                    // Dehumidifier mode was switched on and external external code is being used, so start dehumidifier via external code
+                    if (typeof deviceData.externalDehumidifier.dehumififier == "function") deviceData.externalDehumidifier.dehumififier(deviceData.target_humidity, this.nestObject.config.debug);
+                }
+                if (deviceData.previous_dehumidifier_state  == true && deviceData.dehumidifier_state == false && typeof deviceData.externalDehumidifier == "object") {
+                    // Dehumidifier mode was switched off and external external code was being used, so stop dehumidifier via external code
+                    if (typeof deviceData.externalDehumidifier.off == "function") deviceData.externalDehumidifier.off(this.nestObject.config.debug);
+                }
                 this.ThermostatService.updateCharacteristic(Characteristic.TargetRelativeHumidity, deviceData.target_humidity);
+                //this.DehumidifierService.updateCharacteristic();    // What to do??
                 historyEntry.status = 4;    // dehumifiying 
             }
 
@@ -1932,12 +1960,20 @@ NestClass.prototype.getNestData = async function() {
 
 NestClass.prototype.setNestStructure = async function(nestStructure, key, value, targetChange) {
     var retValue = false;
-    if (this.nestToken != "" && this.nestURL != "" && this.nestID != "") {
-        await axios.post(this.nestURL + "/v2/put/" + nestStructure, JSON.stringify( { "target_change_pending": targetChange, [key]: value}), {headers: {"content-type": "application/json", "user-agent": USERAGENT, "Authorization": "Basic " + this.nestToken} })
+    var put = {objects: []};
+    if (this.nestToken != "" && this.nestURL != "") {
+        put.objects.push({"object_key" : nestStructure, "op" : "MERGE", "value": {[key]: value}});
+        this.rawNestData[nestStructure.split(".")[0]][nestStructure.split(".")[1]].key = value; // Quick update to our internal Nest structure
+        if (nestStructure.split(".")[0] == "shared") {
+            put.objects.push({"object_key" : nestStructure, "op" : "MERGE", "value": {"target_change_pending": targetChange}});
+            this.rawNestData[nestStructure.split(".")[0]][nestStructure.split(".")[1]].target_change_pending = targetChange; // Quick update to our internal Nest structure
+        }
+        await axios.post(this.nestURL + "/v5/put", JSON.stringify(put), {headers: {"user-agent": USERAGENT, "Authorization": "Basic " + this.nestToken} })
         .then(response => {
             if (response.status == 200) {
-                this.config.debug && console.debug("[NEST] Successfully set Nest structure element of '%s' to '%s' on '%s", key, value, nestStructure);
                 retValue = true;    // successfully set Nest structure value
+            } else {
+                console.log(response)
             }
         })
         .catch(error => {
@@ -1949,11 +1985,10 @@ NestClass.prototype.setNestStructure = async function(nestStructure, key, value,
 
 NestClass.prototype.setNestCamera = async function(deviceID, key, value) {
     var retValue = false;
-    if (this.nestToken != "" && this.nestURL != "" && this.nestID != "" && deviceID != "") {
+    if (this.nestToken != "" && this.nestURL != "" && deviceID != "") {
         await axios.post(CAMERAAPIHOST + "/api/dropcams.set_properties", [key] + "=" + value + "&uuid=" + this.nestDevices[deviceID].camera_uuid, {headers: {"content-type": "application/x-www-form-urlencoded", "user-agent": USERAGENT, "Referer" : REFERER, [this.cameraAPI.key] : this.cameraAPI.value + this.nestCameraToken}, responseType: "json", timeout: NESTAPITIMEOUT})
         .then((response) => {
             if (response.status == 200 && response.data.status == 0) {
-                this.config.debug && console.debug("[NEST] Successfully set Nest Camera element of '%s' to '%s' on '%s", key, value, deviceID);
                 retValue = true;    // successfully set Nest camera value
             }
         })
@@ -2035,7 +2070,7 @@ NestClass.prototype.__processNestData = function(nestData) {
                 this.nestDevices[thermostat.serial_number] = {};
                 this.nestDevices[thermostat.serial_number].device_type = "thermostat";  // nest thermostat
                 this.nestDevices[thermostat.serial_number].nest_device_structure = "device." + deviceID;
-                this.nestDevices[thermostat.serial_number].software_version = (typeof thermostat.current_version!= "undefined" ? thermostat.current_version.replace(/-/g, ".") : "0.0.0");
+                this.nestDevices[thermostat.serial_number].software_version = (typeof thermostat.current_version != "undefined" ? thermostat.current_version.replace(/-/g, ".") : "0.0.0");
                 this.nestDevices[thermostat.serial_number].mac_address = tempMACAddress;    // Our created MAC address
                 this.nestDevices[thermostat.serial_number].current_humidity = thermostat.current_humidity;
                 this.nestDevices[thermostat.serial_number].temperature_scale = thermostat.temperature_scale;
@@ -2054,6 +2089,9 @@ NestClass.prototype.__processNestData = function(nestData) {
                 this.nestDevices[thermostat.serial_number].backplate_temperature = __adjustTemperature(thermostat.backplate_temperature, "C", "C");
                 this.nestDevices[thermostat.serial_number].temperature_lock = thermostat.temperature_lock;
                 this.nestDevices[thermostat.serial_number].temperature_lock_pin_hash = thermostat.temperature_lock_pin_hash;
+                this.nestDevices[thermostat.serial_number].target_change_pending = nestData.shared[thermostat.serial_number].target_change_pending;
+
+                // There is a "mode" change pending, so setup deta
                 if (thermostat.eco.mode.toUpperCase() == "AUTO-ECO" || thermostat.eco.mode.toUpperCase() == "MANUAL-ECO") {
                     // thermostat is running in "eco" mode, we'll override the target temps to be that of eco mode ones
                     // also define a new hvac mode of "eco"
@@ -2063,24 +2101,24 @@ NestClass.prototype.__processNestData = function(nestData) {
                         // eco range
                         this.nestDevices[thermostat.serial_number].hvac_mode = "eco";
                         this.nestDevices[thermostat.serial_number].target_temperature_type = "range"
-                     }
-                     if (thermostat.away_temperature_high_enabled == true && thermostat.away_temperature_low_enabled == false) {
+                    }
+                    if (thermostat.away_temperature_high_enabled == true && thermostat.away_temperature_low_enabled == false) {
                         // eco cool
                         this.nestDevices[thermostat.serial_number].hvac_mode = "eco";
                         this.nestDevices[thermostat.serial_number].target_temperature_type = "cool"
                         this.nestDevices[thermostat.serial_number].target_temperature = this.nestDevices[thermostat.serial_number].target_temperature_high;
-                     }
-                     if (thermostat.away_temperature_high_enabled == false && thermostat.away_temperature_low_enabled == true) {
+                    }
+                    if (thermostat.away_temperature_high_enabled == false && thermostat.away_temperature_low_enabled == true) {
                         // eco heat
                         this.nestDevices[thermostat.serial_number].hvac_mode = "eco";
                         this.nestDevices[thermostat.serial_number].target_temperature_type = "heat"
                         this.nestDevices[thermostat.serial_number].target_temperature = this.nestDevices[thermostat.serial_number].target_temperature_low;
-                     }
-                     if (thermostat.away_temperature_high_enabled == false && thermostat.away_temperature_low_enabled == false) {
+                    }
+                    if (thermostat.away_temperature_high_enabled == false && thermostat.away_temperature_low_enabled == false) {
                         // eco off or just off??
                         this.nestDevices[thermostat.serial_number].hvac_mode = "off";
                         this.nestDevices[thermostat.serial_number].target_temperature_type = "off"
-                     }
+                    }
                 }
                 else {
                     // Just a normal mode, ie: not eco type
@@ -2118,36 +2156,32 @@ NestClass.prototype.__processNestData = function(nestData) {
                 this.nestDevices[thermostat.serial_number].fan_state = false;
                 if (thermostat.fan_timer_timeout > 0 || nestData.shared[thermostat.serial_number].hvac_fan_state == true) this.nestDevices[thermostat.serial_number].fan_state = true;
 
+                // Humidifier/dehumidifier details
+                this.nestDevices[thermostat.serial_number].has_humidifier = thermostat.has_humidifier;
+                this.nestDevices[thermostat.serial_number].target_humidity = thermostat.target_humidity;
+                this.nestDevices[thermostat.serial_number].humidifier_state = thermostat.humidifier_state;
+                this.nestDevices[thermostat.serial_number].dehumidifier_state = thermostat.dehumidifier_state;
+         
                 // Setup previous modes and states
                 if (typeof this.previousDevices[thermostat.serial_number] != "object") {
                     this.previousDevices[thermostat.serial_number] = {};
                     this.previousDevices[thermostat.serial_number].hvac_mode = this.nestDevices[thermostat.serial_number].hvac_mode;
                     this.previousDevices[thermostat.serial_number].hvac_state = this.nestDevices[thermostat.serial_number].hvac_state;
                     this.previousDevices[thermostat.serial_number].fan_state = this.nestDevices[thermostat.serial_number].fan_state;
+                    this.previousDevices[thermostat.serial_number].humidifier_state = this.nestDevices[thermostat.serial_number].humidifier_state;
+                    this.previousDevices[thermostat.serial_number].dehumidifier_state = this.nestDevices[thermostat.serial_number].dehumidifier_state;
                     this.previousDevices[thermostat.serial_number].previous_hvac_mode = this.nestDevices[thermostat.serial_number].hvac_mode;
                     this.previousDevices[thermostat.serial_number].previous_hvac_state = this.nestDevices[thermostat.serial_number].hvac_state;
                     this.previousDevices[thermostat.serial_number].previous_fan_state = this.nestDevices[thermostat.serial_number].fan_state;
+                    this.previousDevices[thermostat.serial_number].previous_humidifier_state = this.nestDevices[thermostat.serial_number].humidifier_state;
+                    this.previousDevices[thermostat.serial_number].previous_dehumidifier_state = this.nestDevices[thermostat.serial_number].dehumidifier_state;
                     this.previousDevices[thermostat.serial_number].battery_level = 0;
-                    this.nestDevices[thermostat.serial_number].previous_hvac_mode = this.nestDevices[thermostat.serial_number].hvac_mode;
-                    this.nestDevices[thermostat.serial_number].previous_hvac_state = this.nestDevices[thermostat.serial_number].hvac_state;
-                    this.nestDevices[thermostat.serial_number].previous_fan_state = this.nestDevices[thermostat.serial_number].fan_state;    
                 }
-
-                if (this.nestDevices[thermostat.serial_number].hvac_mode != this.previousDevices[thermostat.serial_number].hvac_mode) {
-                    this.nestDevices[thermostat.serial_number].previous_hvac_mode = this.previousDevices[thermostat.serial_number].hvac_mode;
-                } else {
-                    this.nestDevices[thermostat.serial_number].previous_hvac_mode = this.nestDevices[thermostat.serial_number].hvac_mode;
-                }
-                if (this.nestDevices[thermostat.serial_number].hvac_state != this.previousDevices[thermostat.serial_number].hvac_state) {
-                    this.nestDevices[thermostat.serial_number].previous_hvac_state = this.previousDevices[thermostat.serial_number].hvac_state;
-                } else {
-                    this.nestDevices[thermostat.serial_number].previous_hvac_state = this.nestDevices[thermostat.serial_number].hvac_state;
-                }
-                if (this.nestDevices[thermostat.serial_number].fan_state != this.previousDevices[thermostat.serial_number].fan_state) {
-                    this.nestDevices[thermostat.serial_number].previous_fan_state = this.previousDevices[thermostat.serial_number].fan_state;
-                } else {
-                    this.nestDevices[thermostat.serial_number].previous_fan_state = this.nestDevices[thermostat.serial_number].fan_state;
-                }
+                this.nestDevices[thermostat.serial_number].previous_hvac_mode = this.previousDevices[thermostat.serial_number].hvac_mode;
+                this.nestDevices[thermostat.serial_number].previous_hvac_state = this.previousDevices[thermostat.serial_number].hvac_state;
+                this.nestDevices[thermostat.serial_number].previous_fan_state = this.previousDevices[thermostat.serial_number].fan_state;
+                this.nestDevices[thermostat.serial_number].previous_humidifier_state = this.previousDevices[thermostat.serial_number].humidifier_state;
+                this.nestDevices[thermostat.serial_number].previous_dehumidifier_state = this.previousDevices[thermostat.serial_number].dehumidifier_state;
 
                 // Get device location name
                 this.nestDevices[thermostat.serial_number].location = "";
@@ -2157,7 +2191,7 @@ NestClass.prototype.__processNestData = function(nestData) {
                     }
                 });
                 
-                this.nestDevices[thermostat.serial_number].battery_charging_state = typeof this.previousDevices == "object" && thermostat.battery_level > this.previousDevices[thermostat.serial_number].battery_level && this.previousDevices[thermostat.serial_number].battery_level != 0 ? true : false;
+                this.nestDevices[thermostat.serial_number].battery_charging_state = (thermostat.battery_level > this.previousDevices[thermostat.serial_number].battery_level && this.previousDevices[thermostat.serial_number].battery_level != 0 ? true : false);
                 this.nestDevices[thermostat.serial_number].away = nestData.structure[nestData.link[thermostat.serial_number].structure.split('.')[1]].away;    // away status
                 this.nestDevices[thermostat.serial_number].vacation_mode = nestData.structure[nestData.link[thermostat.serial_number].structure.split('.')[1]].vacation_mode;  // vacation mode
                 this.nestDevices[thermostat.serial_number].home_name = __makeValidHomeKitName(nestData.structure[nestData.link[thermostat.serial_number].structure.split('.')[1]].name);  // Home name
@@ -2193,12 +2227,6 @@ NestClass.prototype.__processNestData = function(nestData) {
                 this.nestDevices[thermostat.serial_number].filter_replacement_needed = thermostat.filter_replacement_needed;
                 this.nestDevices[thermostat.serial_number].filter_changed_date = thermostat.filter_changed_date;
                 this.nestDevices[thermostat.serial_number].filter_replacement_threshold_sec = thermostat.filter_replacement_threshold_sec;
-
-                // Humidifier/dehumidifier details
-                this.nestDevices[thermostat.serial_number].has_humidifier = thermostat.has_humidifier;
-                this.nestDevices[thermostat.serial_number].target_humidity = thermostat.target_humidity;
-                this.nestDevices[thermostat.serial_number].humidifier_state = thermostat.humidifier_state;
-                this.nestDevices[thermostat.serial_number].dehumidifier_state = thermostat.dehumidifier_state;
 
                 // Insert any extra options we've read in from configuration file
                 this.extraOptions[thermostat.serial_number] && Object.entries(this.extraOptions[thermostat.serial_number]).forEach(([key, value]) => {
@@ -2522,11 +2550,19 @@ NestClass.prototype.__nestSubscribe = async function() {
                         }
                     }
                     tempDeviceList = tempDeviceList.sort((a, b) => a - b);  // filter out duplicates
-                } else {                
-                    // Update internal saved Nest structure for the changed key/value pairs
+                } else {    
+                    if (mainKey == "shared" && updatedData.value.target_change_pending == false) {
+                        // If not marked as change pending, we ignore mode and temperatures changes here
+                        delete updatedData.value.target_temperature_type;
+                        delete updatedData.value.target_temperature_high;
+                        delete updatedData.value.target_temperature;
+                        delete updatedData.value.target_temperature_low;
+                    }
+                    // Update internal saved Nest structure for the remaining changed key/value pairs
                     for (const [fieldKey, fieldValue] of Object.entries(updatedData.value)) {
                         this.rawNestData[mainKey][subKey][fieldKey] = fieldValue;
                     }
+
                     this.rawNestData[mainKey][subKey]["$version"] = updatedData.object_revision; // Updated version of object. needed for future subscription calls
                     this.rawNestData[mainKey][subKey]["$timestamp"] = updatedData.object_timestamp;  // Updated timestam of object. needed for future subscription calls
 
@@ -2703,6 +2739,8 @@ async function __getPort(options) {
 }
 
 function processDeviceforHomeKit(nestObjectClass, deviceData, action) {
+    // MDNSAdvertiser
+    //{ CIAO: 'ciao', BONJOUR: 'bonjour-hap', AVAHI: 'avahi' }
     if (action == "add" && typeof deviceData == "object") {
         // adding device into HomeKit
         // Generate some common things
@@ -2735,7 +2773,7 @@ function processDeviceforHomeKit(nestObjectClass, deviceData, action) {
                 tempAccessory.__thisObject.addThermostat(tempAccessory, tempName, 1, deviceData); 
 
                 accessories.push(tempAccessory);   // Push onto export array for HAP-NodeJS "accessory factory"
-                tempAccessory.publish({username: tempAccessory.username, pincode: tempAccessory.pincode, category: tempAccessory.category, advertiser: "ciao"});    // Publish accessory on local network
+                tempAccessory.publish({username: tempAccessory.username, pincode: tempAccessory.pincode, category: tempAccessory.category, advertiser: nest.config.mDNS});    // Publish accessory on local network
                 nestObjectClass.deviceSubscribe(tempAccessory.__thisObject.deviceID, tempAccessory, tempAccessory.__thisObject.updateHomeKit.bind(tempAccessory.__thisObject), "add");
                 break;
             }
@@ -2761,7 +2799,7 @@ function processDeviceforHomeKit(nestObjectClass, deviceData, action) {
                 tempAccessory.__thisObject.addTemperatureSensor(tempAccessory, tempName, 1, deviceData); 
 
                 accessories.push(tempAccessory);   // Push onto export array for HAP-NodeJS "accessory factory"
-                tempAccessory.publish({username: tempAccessory.username, pincode: tempAccessory.pincode, category: tempAccessory.category, advertiser: "ciao"});    // Publish accessory on local network
+                tempAccessory.publish({username: tempAccessory.username, pincode: tempAccessory.pincode, category: tempAccessory.category, advertiser: nest.config.mDNS});    // Publish accessory on local network
                 nestObjectClass.deviceSubscribe(tempAccessory.__thisObject.deviceID, tempAccessory, tempAccessory.__thisObject.updateHomeKit.bind(tempAccessory.__thisObject), "add");
                 break;
             }
@@ -2790,7 +2828,7 @@ function processDeviceforHomeKit(nestObjectClass, deviceData, action) {
                 tempAccessory.__thisObject.addSmokeCOSensor(tempAccessory, tempName, 1, deviceData); 
 
                 accessories.push(tempAccessory);   // Push onto export array for HAP-NodeJS "accessory factory"
-                tempAccessory.publish({username: tempAccessory.username, pincode: tempAccessory.pincode, category: tempAccessory.category, advertiser: "ciao"}); // Publish accessory on local network
+                tempAccessory.publish({username: tempAccessory.username, pincode: tempAccessory.pincode, category: tempAccessory.category, advertiser: nest.config.mDNS}); // Publish accessory on local network
                 nestObjectClass.deviceSubscribe(tempAccessory.__thisObject.deviceID, tempAccessory, tempAccessory.__thisObject.updateHomeKit.bind(tempAccessory.__thisObject), "add");
                 break;
             }
@@ -2817,7 +2855,7 @@ function processDeviceforHomeKit(nestObjectClass, deviceData, action) {
                 tempAccessory.__thisObject.addDoorbellCamera(tempAccessory, tempName, 1, deviceData);
 
                 accessories.push(tempAccessory);   // Push onto export array for HAP-NodeJS "accessory factory"
-                tempAccessory.publish({username: tempAccessory.username, pincode: tempAccessory.pincode, category: tempAccessory.category, advertiser: "ciao"}); // Publish accessory on local network
+                tempAccessory.publish({username: tempAccessory.username, pincode: tempAccessory.pincode, category: tempAccessory.category, advertiser: nest.config.mDNS}); // Publish accessory on local network
                 nestObjectClass.deviceSubscribe(tempAccessory.__thisObject.deviceID, tempAccessory, tempAccessory.__thisObject.updateHomeKit.bind(tempAccessory.__thisObject), "add");
                 break;
             }
@@ -2868,17 +2906,33 @@ axios.interceptors.response.use(undefined, function axiosRetryInterceptor(err) {
     });
 });
 
+function isFfmpegValid(validLibraries) {
+    // Validates if the ffmpeg binary has been complied to support the required libraries
+    var isValid = false;    // Not valid yet
+    var output = spawnSync(ffmpegPath || "ffmpeg", ["-version"], { env: process.env });
+    if (output.stdout != null) {
+        var foundLibaries = 0;
+        validLibraries.forEach((library) => {
+            if (output.stdout.toString().includes(library) == true) {
+                foundLibaries++;    // One more found library
+            }
+        });
+        isValid = (foundLibaries == validLibraries.length);
+    }
+    return isValid;
+}
+
 
 // Startup code
-// Check to see if a onfiguration file was passed into use
+// Check to see if a configuration file was passed into use
 var configFile = __dirname + "/" + CONFIGURATIONFILE;
-if (process.argv.slice(2).length == 1) {  // We only process one arg
+if (process.argv.slice(2).length == 1) {  // We only support/process one argument
     configFile = process.argv.slice(2)[0];   // Extract the file name from the argument passed in
     if (configFile.indexOf("/") == -1) configFile = __dirname + "/" + configFile;
 }
 
 console.log("Starting Nest devices HomeKit accessory. We're using HAP-NodeJS library v" + HAPNodeJS.HAPLibraryVersion());
-console.log("Using configuration file", configFile);
+console.log("Using configuration file '%s'", configFile);
 
 // Check that the config file is present before continuing
 if (fs.existsSync(configFile) == true) {
@@ -2887,34 +2941,44 @@ if (fs.existsSync(configFile) == true) {
         nest.nestConnect()   // Initiate connection to Nest APIs with either the specified session or refresh tokens
         .then(() => {
             if (nest.nestToken != "") {
-                nest.debug && console.debug("[NEST] Getting active devices from Nest");
+                nest.config.debug && console.debug("[NEST] Getting active devices from Nest");
                 nest.getNestData()  // Get of devices we have in our Nest structure
                 .then(() => {
-                    // Process any discovered Nest devices into HomeKit
-                    nest.__processNestData(nest.rawNestData);
-                    nest.nestDevices && Object.entries(nest.nestDevices).forEach(([deviceID, deviceData]) => {
-                        processDeviceforHomeKit(nest, deviceData, "add");    
-                    });
+                    nest.config.debug && console.debug("[NEST] Devices will be advertised using '%s' mDNS provider", nest.config.mDNS);
+                    if (typeof nest.rawNestData.quartz != "object" || (typeof nest.rawNestData.quartz == "object" && isFfmpegValid(FFMPEGLIBARIES) == true)) {
+                        // We don't have "quartz" object key, OR we have a "quartz" key AND a valid ffmpeg binary
+                        // Means we've validated the ffmpeg binary being used supports the required libraries we need for streaming and/or record
 
-                    nest.debug && console.debug("[NEST] Setup subscription for Nest structure changes");
-                    nest.addListener(NESTSTRUCTURECHANGE, processDeviceforHomeKit); // Notifications for any device additions/removals in Nest structure
-                    
-                    nest.debug && console.debug("[NEST] Started Nest subscription loop");
-                    nest.__nestSubscribe();  // Start subscription
+                        // Process any discovered Nest devices into HomeKit
+                        nest.__processNestData(nest.rawNestData);
+                        nest.nestDevices && Object.entries(nest.nestDevices).forEach(([deviceID, deviceData]) => {
+                            processDeviceforHomeKit(nest, deviceData, "add");    
+                        });
+
+                        nest.config.debug && console.debug("[NEST] Setup subscription for Nest structure changes");
+                        nest.addListener(NESTSTRUCTURECHANGE, processDeviceforHomeKit); // Notifications for any device additions/removals in Nest structure
+                        
+                        nest.config.debug && console.debug("[NEST] Started Nest subscription loop");
+                        nest.__nestSubscribe();  // Start subscription
+                    } else {
+                        // ffmpeg binary doesn't support the required libraries we require
+                        console.log("The ffmpeg binary '%s' does not support the required libraries for doorbell and/or camera usage", (ffmpegPath || "ffmpeg"));
+                        console.log("Required libraries in ffmpeg are", FFMPEGLIBARIES);
+                    }
                 });
             }
         });
     } else {
-        console.log("An Invalid Nest session or refreshtoken token was specified in Nest_config.json");
+        console.log("An Invalid Nest session or refreshtoken token was specified in configuration file");
     }
 } else {
-    console.log("Missing Nest_config.json file in current directory");
+    console.log("Specified Configuration file '%s'", configFile, "cannot be located");
 }
 
 
 // Exit/cleanup code when/if process stopped
 // Taken from HAP-NodeJS core.js/ts code
-var signals = { 'SIGINT': 2, 'SIGTERM': 15 };
+var signals = {"SIGINT" : 2, "SIGTERM" : 15 };
 Object.keys(signals).forEach((signal) => {
     process.on(signal, () => {
         for (var index = 0; index < accessories.length; index++) {
