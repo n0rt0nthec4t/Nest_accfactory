@@ -2552,11 +2552,8 @@ NestClass.prototype.__nestSubscribe = async function() {
                     tempDeviceList = tempDeviceList.sort((a, b) => a - b);  // filter out duplicates
                 } else {    
                     if (mainKey == "shared" && updatedData.value.target_change_pending == false) {
-                        // If not marked as change pending, we ignore mode and temperatures changes here
+                        // If not marked as change pending, we ignore mode the mode listed here
                         delete updatedData.value.target_temperature_type;
-                        delete updatedData.value.target_temperature_high;
-                        delete updatedData.value.target_temperature;
-                        delete updatedData.value.target_temperature_low;
                     }
                     // Update internal saved Nest structure for the remaining changed key/value pairs
                     for (const [fieldKey, fieldValue] of Object.entries(updatedData.value)) {
