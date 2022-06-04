@@ -47,8 +47,8 @@ The options available are within the configuration file are listed below. Some o
 
 | Option           | Values                  | Description                                                                               | Global/Local |
 |------------------|-------------------------|-------------------------------------------------------------------------------------------|--------------|
-| Refresh Token    |                         | Google account refresh token                                                              | global       |
-| Session Token    |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
+| RefreshToken     |                         | Google account refresh token                                                              | global       |
+| SessionToken     |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
 | Debug            | true, false             | Turns debugging on or off. Default is off                                                 | global       |
 | mDNS             | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is ciao                                           | global       |
 | HKSV             | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras                            | global/local |
@@ -57,4 +57,4 @@ The options available are within the configuration file are listed below. Some o
 | MotionCooldown   | seconds or milliseconds | Ignore motion detection for this time once triggered. Default is 1 minute                 | global/local |
 | PersonCooldown   | seconds or milliseconds | Ignore person detection for this time once triggered (Non HKSV only) Default is 2 minutes | global/local |
 | DoorbellCooldown | seconds or milliseconds | Ignore doorbeel button pressed for this time once triggered Default is 1 minute           | global/local |
-| Exclude          | true, false             | Exclude a device. Listed by devices serial number                                         | local        |
+| Exclude          | true, false             | Exclude a device                                                                          | local        |
