@@ -2,6 +2,6 @@
 Dockerfile
 Nest_config.json
 *.sample
-*.MD
+*.md
 .github
 .gitignore
