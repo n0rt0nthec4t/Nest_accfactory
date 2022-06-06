@@ -51,7 +51,7 @@ The options available are within the configuration file are listed below. Some o
 | SessionToken     |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
 | Debug            | true, false             | Turns debugging on or off. Default is off                                                 | global       |
 | mDNS             | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is ciao                                           | global       |
-| HKSV             | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras. Default is o              | global/local |
+| HKSV             | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras. Default is off.           | global/local |
 | HKSVPreBuffer    | seconds or milliseconds | Amount of time the pre-buffer for HomeKit Secure Video holds data. Default is 15 seconds  | global/local |
 | H264Encoder      | copy, libx264, h264_omx | H264 encoder ffmpeg used for streaming and recording. Default is copy                     | global       |
 | MotionCooldown   | seconds or milliseconds | Ignore motion detection for this time once triggered. Default is 1 minute                 | global/local |
