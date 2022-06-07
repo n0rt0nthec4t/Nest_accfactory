@@ -57,6 +57,7 @@
 // -- Preparation to use HAP-NodeJS as a library, rather than accessory factory as is now. Will allow for depreciation of HAP-NodeJS's Core.js
 // -- Option to change mDNS advertiser
 // -- Setting nest structure element updated to later entry point
+// -- Uses StatusFault for device offline, removed from base etc
 //
 // -- Nest Thermostat
 //      -- Migrated from NestThermostat_accfactory (v4) coding
@@ -83,6 +84,7 @@
 //      -- Online status for Nest Temperature sensors
 //      -- HomeKit status fault if no data for upto 1hr
 //      -- Generate CRC-24 for "fake" device mac address using Nest Labs prefix
+//      -- Update to show which is the active sensor for any thermostat. Uses StatusActive in HomeKit
 //
 // -- Nest Protect
 //      -- Battery charging state
@@ -106,7 +108,7 @@
 //    Access token can be view by logging in to https//home.nest.com on webbrowser then in going to https://home.nest.com/session  Seems access token expires every 30days
 //    so needs manually updating (haven't seen it expire yet.....)
 //
-// Version 31/5/2022
+// Version 4/6/2022
 // Mark Hulskamp
 
 module.exports = accessories = [];
@@ -169,8 +171,10 @@ const LOWBATTERYLEVEL = 10;                                     // Low battery l
 const CONFIGURATIONFILE = "Nest_config.json";                   // Default configuration file name, located in current directory
 const CAMERAOFFLINEJPGFILE = "Nest_camera_offline.jpg";         // Camera offline jpg image file
 const CAMERAOFFJPGFILE = "Nest_camera_off.jpg";                 // Camera off jpg image file
+const CAMERACONNECTINGJPGFILE = "Nest_camera_connecting.jpg";   // Camera connecting jpg image file
 const CAMERAOFFLINEH264FILE = "Nest_camera_offline.h264";       // Camera offline H264 frame file
 const CAMERAOFFH264FILE = "Nest_camera_off.h264";               // Camera off H264 frame file
+const CAMERACONNECTING264FILE = "Nest_camera_connecting.h264";  // Camera connecting H264 frame file
 const NESTSTRUCTURECHANGE = "structure";                        // Nest structure change event
 const MP4BOX = "mp4box";                                        // MP4 box fragement event
 const FFMPEGLIBARIES = ["libspeex", "libx264", "libfdk-aac"];   // List of ffmpeg libraries we require for doorbell/camera(s)
@@ -337,6 +341,8 @@ class NestClass extends EventEmitter {
         spawnSync(ffmpegPath || "ffmpeg", ffmpegCommand.split(" "), { env: process.env });
         var ffmpegCommand = "-hide_banner -loop 1 -i " + __dirname + "/" + CAMERAOFFJPGFILE + " -vframes 1 -r 15 -y -f h264 -profile:v main " + __dirname + "/" + CAMERAOFFH264FILE;
         spawnSync(ffmpegPath || "ffmpeg", ffmpegCommand.split(" "), { env: process.env });
+        var ffmpegCommand = "-hide_banner -loop 1 -i " + __dirname + "/" + CAMERACONNECTINGJPGFILE + " -vframes 1 -r 15 -y -f h264 -profile:v main " + __dirname + "/" + CAMERACONNECTING264FILE;
+        spawnSync(ffmpegPath || "ffmpeg", ffmpegCommand.split(" "), { env: process.env });
 
         // Time we create this object. Used to filter camera alert events out before this started
         this.startTime = Math.floor(new Date() / 1000);
@@ -419,7 +425,8 @@ function CameraClass() {
 ThermostatClass.prototype.addThermostat = function(HomeKitAccessory, thisServiceName, serviceNumber, deviceData) {
     // Add this thermostat to the "master" accessory and set properties
     this.ThermostatService = HomeKitAccessory.addService(Service.Thermostat, "Thermostat", 1);
-    this.ThermostatService.addCharacteristic(Characteristic.StatusActive);
+    this.ThermostatService.addCharacteristic(Characteristic.StatusActive);  // Used to indicate active temperature
+    this.ThermostatService.addCharacteristic(Characteristic.StatusFault);  // Used to indicate Nest online or not
     this.ThermostatService.addCharacteristic(Characteristic.LockPhysicalControls);    // Setting can only be accessed via Eve App (or other 3rd party).
     deviceData.has_air_filter && this.ThermostatService.addCharacteristic(Characteristic.FilterChangeIndication);   // Add characteristic if has air filter
     deviceData.has_humidifier && this.ThermostatService.addCharacteristic(Characteristic.TargetRelativeHumidity);   // Add characteristic if has dehumidifier
@@ -430,14 +437,14 @@ ThermostatClass.prototype.addThermostat = function(HomeKitAccessory, thisService
     // Seperate humidity sensor if configured todo so
     if (deviceData.humiditySensor && deviceData.humiditySensor == true) {
         this.HumidityService = HomeKitAccessory.addService(Service.HumiditySensor, "Humidity", 1);      // Humidity will be listed under seperate sensor
-        this.HumidityService.addCharacteristic(Characteristic.StatusActive);
+        this.HumidityService.addCharacteristic(Characteristic.StatusFault);
     } else {
         this.ThermostatService.addCharacteristic(Characteristic.CurrentRelativeHumidity); // Humidity will be listed under thermostat only
     }
 
     // Add home/away status as an occupancy sensor
     this.OccupancyService = HomeKitAccessory.addService(Service.OccupancySensor, "Occupancy", 1);
-    this.OccupancyService.addCharacteristic(Characteristic.StatusActive);
+    this.OccupancyService.addCharacteristic(Characteristic.StatusFault);
 
     // Limit prop ranges
     if (deviceData.can_cool == false && deviceData.can_heat == true)
@@ -630,9 +637,10 @@ ThermostatClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData)
             HomeKitAccessory.getService(Service.AccessoryInformation).updateCharacteristic(Characteristic.FirmwareRevision, deviceData.software_version);   // Update firmware version
             this.ThermostatService.updateCharacteristic(Characteristic.TemperatureDisplayUnits, deviceData.temperature_scale.toUpperCase() == "C" ? Characteristic.TemperatureDisplayUnits.CELSIUS : Characteristic.TemperatureDisplayUnits.FAHRENHEIT);
             this.ThermostatService.updateCharacteristic(Characteristic.CurrentTemperature, deviceData.active_temperature);
-            this.ThermostatService.updateCharacteristic(Characteristic.StatusActive, (deviceData.online == true && deviceData.removed_from_base == false) ? true : false);  // If Nest isn't online or removed from base, report in HomeKit
+            this.ThermostatService.updateCharacteristic(Characteristic.StatusFault, (deviceData.online == true && deviceData.removed_from_base == false) ? Characteristic.StatusFault.NO_FAULT : Characteristic.StatusFault.GENERAL_FAULT);  // If Nest isn't online or removed from base, report in HomeKit
             this.ThermostatService.updateCharacteristic(Characteristic.LockPhysicalControls, deviceData.temperature_lock == true ? Characteristic.LockPhysicalControls.CONTROL_LOCK_ENABLED : Characteristic.LockPhysicalControls.CONTROL_LOCK_DISABLED);
-            deviceData.has_air_filter && this.ThermostatService.updateCharacteristic(Characteristic.FilterChangeIndication, (deviceData.filter_replacement_needed == true ? Characteristic.FilterChangeIndication.CHANGE_FILTER : Characteristic.FilterChangeIndication.FILTER_OK));
+            this.ThermostatService.updateCharacteristic(Characteristic.FilterChangeIndication, (deviceData.has_air_filter && deviceData.filter_replacement_needed == true ? Characteristic.FilterChangeIndication.CHANGE_FILTER : Characteristic.FilterChangeIndication.FILTER_OK));
+            this.ThermostatService.updateCharacteristic(Characteristic.StatusActive, (deviceData.active_rcs_sensor != "" ? false : true));  // Using a temperature sensor as active temperature?
             
             // Update HomeKit steps and ranges for temperatures
             // Do we limit ranges when childlock on????
@@ -649,12 +657,12 @@ ThermostatClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData)
     
             // Update for away/home status. Away = no occupancy detected, Home = Occupancy Detected
             this.OccupancyService.updateCharacteristic(Characteristic.OccupancyDetected, deviceData.away == true ? Characteristic.OccupancyDetected.OCCUPANCY_NOT_DETECTED : Characteristic.OccupancyDetected.OCCUPANCY_DETECTED);
-            this.OccupancyService.updateCharacteristic(Characteristic.StatusActive, (deviceData.online == true && deviceData.removed_from_base == false) ? true : false);  // If Nest isn't online or removed from base, report in HomeKit
+            this.OccupancyService.updateCharacteristic(Characteristic.StatusFault, (deviceData.online == true && deviceData.removed_from_base == false) ? Characteristic.StatusFault.NO_FAULT : Characteristic.StatusFault.GENERAL_FAULT);  // If Nest isn't online or removed from base, report in HomeKit
 
             // Update seperate humidity sensor if configured todo so
             if (this.HumidityService != null) {
                 this.HumidityService.updateCharacteristic(Characteristic.CurrentRelativeHumidity, deviceData.current_humidity);  // Humidity will be listed under seperate sensor
-                this.HumidityService.updateCharacteristic(Characteristic.StatusActive, (deviceData.online == true && deviceData.removed_from_base == false) ? true : false);  // If Nest isn't online or removed from base, report in HomeKit
+                this.HumidityService.updateCharacteristic(Characteristic.StatusFault, (deviceData.online == true && deviceData.removed_from_base == false) ? Characteristic.StatusFault.NO_FAULT : Characteristic.StatusFault.GENERAL_FAULT);  // If Nest isn't online or removed from base, report in HomeKit
             } else {
                 this.ThermostatService.updateCharacteristic(Characteristic.CurrentRelativeHumidity, deviceData.current_humidity);    // Humidity will be listed under thermostat only
             }
@@ -823,6 +831,7 @@ TempSensorClass.prototype.addTemperatureSensor = function(HomeKitAccessory, this
     // Add this temperature sensor to the "master" accessory and set properties   
     this.TemperatureService = HomeKitAccessory.addService(Service.TemperatureSensor, "Temperature", 1);
     this.TemperatureService.addCharacteristic(Characteristic.StatusActive);
+    this.TemperatureService.addCharacteristic(Characteristic.StatusFault);
 
     // Add battery service to display battery level    
     this.BatteryService = HomeKitAccessory.addService(Service.BatteryService, "", 1);
@@ -839,7 +848,10 @@ TempSensorClass.prototype.addTemperatureSensor = function(HomeKitAccessory, this
 TempSensorClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData) {
     if (typeof deviceData == "object" && this.updatingHomeKit == false) {
         if (this.TemperatureService != null && this.BatteryService != null) {
-            this.TemperatureService.updateCharacteristic(Characteristic.StatusActive, deviceData.online == true ? true : false);  // If Nest isn't online, report in HomeKit
+            this.TemperatureService.updateCharacteristic(Characteristic.StatusFault, (deviceData.online == true ? Characteristic.StatusFault.NO_FAULT : Characteristic.StatusFault.GENERAL_FAULT));  // If Nest isn't online, report in HomeKit
+         
+            // Is this sensor providing the active temperature for a thermostat
+            this.TemperatureService.updateCharacteristic(Characteristic.StatusActive, deviceData.active_sensor);
 
             // Update temperature
             this.TemperatureService.updateCharacteristic(Characteristic.CurrentTemperature, deviceData.current_temperature);
@@ -862,10 +874,10 @@ TempSensorClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData)
 SmokeSensorClass.prototype.addSmokeCOSensor = function(HomeKitAccessory, thisServiceName, serviceNumber, deviceData) {
     // Add this smoke sensor & CO sensor to the "master" accessory and set properties   
     this.SmokeService = HomeKitAccessory.addService(Service.SmokeSensor, "Smoke", 1);
-    this.SmokeService.addCharacteristic(Characteristic.StatusActive);
+    this.SmokeService.addCharacteristic(Characteristic.StatusFault);
 
     this.COService = HomeKitAccessory.addService(Service.CarbonMonoxideSensor, "Carbon Monoxide", 1);
-    this.COService.addCharacteristic(Characteristic.StatusActive);
+    this.COService.addCharacteristic(Characteristic.StatusFault);
 
     // Add battery service to display battery level
     this.BatteryService = HomeKitAccessory.addService(Service.BatteryService, "", 1);
@@ -874,7 +886,7 @@ SmokeSensorClass.prototype.addSmokeCOSensor = function(HomeKitAccessory, thisSer
     // Add motion sensor if supported (only on wired versions)
     if (deviceData.wired_or_battery == 0) {
         this.MotionService = HomeKitAccessory.addService(Service.MotionSensor, "Motion", 1);
-        this.MotionService.addCharacteristic(Characteristic.StatusActive);
+        this.MotionService.addCharacteristic(Characteristic.StatusFault);
     }
 
     // Add light blub to represent "night light" if enabled
@@ -906,14 +918,12 @@ SmokeSensorClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData
     if (typeof deviceData == 'object' && this.updatingHomeKit == false) {
         if (this.SmokeService != null && this.COService != null && this.BatteryService != null) {
             HomeKitAccessory.getService(Service.AccessoryInformation).setCharacteristic(Characteristic.FirmwareRevision, deviceData.software_version);
-            this.SmokeService.updateCharacteristic(Characteristic.StatusActive, (deviceData.online == true && deviceData.removed_from_base == false) ? true : false);  // If Nest isn't online or removed from base, report in HomeKit
-            this.SmokeService.updateCharacteristic(Characteristic.StatusFault, (Math.floor(new Date() / 1000) > deviceData.replacement_date) ? Characteristic.StatusFault.GENERAL_FAULT : Characteristic.StatusFault.NO_FAULT);  // General fault if replacement date past
-            this.COService.updateCharacteristic(Characteristic.StatusActive, (deviceData.online == true && deviceData.removed_from_base == false) ? true : false);  // If Nest isn't online or removed from base, report in HomeKit
-            this.COService.updateCharacteristic(Characteristic.StatusFault, (Math.floor(new Date() / 1000) > deviceData.replacement_date) ? Characteristic.StatusFault.GENERAL_FAULT : Characteristic.StatusFault.NO_FAULT);  // General fault if replacement date past
+            this.SmokeService.updateCharacteristic(Characteristic.StatusFault, ((deviceData.online == true && deviceData.removed_from_base == false) && (Math.floor(new Date() / 1000) <= deviceData.replacement_date) ? Characteristic.StatusFault.NO_FAULT : Characteristic.StatusFault.GENERAL_FAULT));  // General fault if replacement date past or Nest isn't online or removed from base
+            this.COService.updateCharacteristic(Characteristic.StatusFault, ((deviceData.online == true && deviceData.removed_from_base == false) && (Math.floor(new Date() / 1000) <= deviceData.replacement_date) ? Characteristic.StatusFault.NO_FAULT : Characteristic.StatusFault.GENERAL_FAULT));  // General fault if replacement date past or Nest isn't online or removed from base
         
             if (this.MotionService != null) {
                 // Motion detect if auto_away = false. Not supported on battery powered Nest Protects
-                this.MotionService.updateCharacteristic(Characteristic.StatusActive, (deviceData.online == true && deviceData.removed_from_base == false) ? true : false);  // If Nest isn't online or removed from base, report in HomeKit
+                this.MotionService.updateCharacteristic(Characteristic.StatusFault, (deviceData.online == true && deviceData.removed_from_base == false) ? Characteristic.StatusFault.NO_FAULT : Characteristic.StatusFault.GENERAL_FAULT);  // If Nest isn't online or removed from base, report in HomeKit
                 this.MotionService.updateCharacteristic(Characteristic.MotionDetected, deviceData.away == false ? true : false);
 
                 // Log motion to history only if changed to previous recording
@@ -1154,7 +1164,6 @@ CameraClass.prototype.handleRecordingStreamRequest = async function *(streamId) 
    
         // Build our ffmpeg command string for the video stream
         var ffmpeg = "-hide_banner"
-            + " -f h264"
             + " -fflags +discardcorrupt"
             + " -f h264 -an -thread_queue_size 1024 -i pipe:0"  // Video data only on stdin
             + (includeAudio == true ? " -f aac -vn -thread_queue_size 1024 -i pipe:3" : "");  // Audio data only on extra pipe created in spawn command
@@ -1277,7 +1286,7 @@ CameraClass.prototype.handleRecordingStreamRequest = async function *(streamId) 
             }
         });
 
-        this.NexusStreamer.startRecordStream("HKSV" + streamId, this.HKSVRecorder.ffmpeg, this.HKSVRecorder.video, this.HKSVRecorder.audio);
+        this.NexusStreamer.startRecordStream("HKSV" + streamId, this.HKSVRecorder.ffmpeg, this.HKSVRecorder.video, this.HKSVRecorder.audio, true);
         this.nestObject.config.debug && console.debug("[HKSV] Recording started on '%s' %s %s", this.nestObject.nestDevices[this.deviceID].mac_address, (includeAudio == true ? "with audio" : "without audio"), (recordCodec != VideoCodecs.COPY ? "using H264 encoder " + recordCodec : ""));
 
         try {
@@ -1500,7 +1509,7 @@ CameraClass.prototype.handleStreamRequest = async function (request, callback) {
                 + " -fflags +discardcorrupt"
                 + " -f h264 -an -thread_queue_size 1024 -i pipe:0"  // Video data only on stdin
                 + (includeAudio == true ? " -f aac -vn -thread_queue_size 1024 -i pipe:3" : "");  // Audio data only on extra pipe created in spawn command
-
+    
             // Build our video command for ffmpeg
             var ffmpegVideo = " -map 0:v"   // stdin, the first input is video data
                 + " -max_muxing_queue_size 9999"
@@ -1513,16 +1522,17 @@ CameraClass.prototype.handleStreamRequest = async function (request, callback) {
                     + (streamCodec != VideoCodecs.H264_V4L2M2M ? " -profile:v " + ((request.video.profile == H264Profile.HIGH) ? "high" : (request.video.profile == H264Profile.MAIN) ? "main" : "baseline") : "")
                     + (streamCodec == VideoCodecs.LIBX264 ? " -level:v " + ((request.video.level == H264Level.LEVEL4_0) ? "4.0" : (request.video.level == H264Level.LEVEL3_2) ? "3.2" : "3.1") : "")
                     + (streamCodec == VideoCodecs.LIBX264 ? " -preset veryfast" : "")
-                    + " -b:v " + request.video.max_bit_rate + "k"
+                    + " -b:v " + (request.video.max_bit_rate * 4) + "k" // Increase bitrate as HomeKit requests a very low one
                     + " -filter:v fps=" + request.video.fps; // convert to framerate HomeKit has requested
             }
 
             ffmpegVideo = ffmpegVideo
+                + " -fflags +genpts+discardcorrupt"
                 + " -payload_type " + request.video.pt
                 + " -ssrc " + this.ongoingSessions[request.sessionID].videoSSRC
                 + " -f rtp"
                 + " -srtp_out_suite " + SRTPCryptoSuites[this.ongoingSessions[request.sessionID].videoCryptoSuite] + " -srtp_out_params " + this.ongoingSessions[request.sessionID].videoSRTP.toString("base64")
-                + " srtp://" + this.ongoingSessions[request.sessionID].address + ":" + this.ongoingSessions[request.sessionID].videoPort + "?rtcpport=" + this.ongoingSessions[request.sessionID].videoPort + "&localrtcpport=" + this.ongoingSessions[request.sessionID].localVideoPort + "&pkt_size=" + request.video.mtu;
+                + " srtp://" + this.ongoingSessions[request.sessionID].address + ":" + this.ongoingSessions[request.sessionID].videoPort + "?rtcpport=" + this.ongoingSessions[request.sessionID].videoPort + "&localrtcpport=" + this.ongoingSessions[request.sessionID].localVideoPort + "&pkt_size=564" //+ request.video.mtu;
 
             // We have seperate video and audio streams that need to be muxed together if audio enabled
             var ffmpegAudio = "";      // No audio yet command yet
@@ -1643,7 +1653,7 @@ CameraClass.prototype.handleStreamRequest = async function (request, callback) {
 
             // Finally start the stream from nexus
             this.nestObject.config.debug && console.debug("[NEST] Live stream started on '%s' %s", this.nestObject.nestDevices[this.deviceID].mac_address,  (streamCodec != VideoCodecs.COPY ? "using H264 encoder " + streamCodec : ""));
-            this.NexusStreamer.startLiveStream("HK" + request.sessionID, ffmpegStreaming.stdin, (includeAudio == true ? ffmpegStreaming.stdio[3] : null), (this.audioTalkback == true ? ffmpegAudioTalkback.stdout : null));
+            this.NexusStreamer.startLiveStream("HK" + request.sessionID, ffmpegStreaming.stdin, (includeAudio == true && ffmpegStreaming.stdio[3] ? ffmpegStreaming.stdio[3] : null), (this.audioTalkback == true && ffmpegAudioTalkback ? ffmpegAudioTalkback.stdout : null), true);
             break;
         }
 
@@ -1938,7 +1948,7 @@ NestClass.prototype.getNestData = async function() {
                     await axios.get(CAMERAAPIHOST + "/api/cameras.get_with_properties?uuid=" + deviceID, {headers: {"user-agent": USERAGENT, "Referer" : REFERER, [this.cameraAPI.key] : this.cameraAPI.value + this.nestCameraToken}, responseType: "json", timeout: NESTAPITIMEOUT})
                     .then((response) => {
                         if (typeof response.data.items[0].properties == "undefined") {
-                            console.log("[DEBUG]", response);
+                            console.log("[TESTING]", response);
                         }
                         if (response.status && response.status == 200) {
                             // Insert extra camera properties. We need this information to use with HomeKit Secure Video
@@ -2157,7 +2167,6 @@ NestClass.prototype.__processNestData = function(nestData) {
                 if (thermostat.fan_timer_timeout > 0 || nestData.shared[thermostat.serial_number].hvac_fan_state == true) this.nestDevices[thermostat.serial_number].fan_state = true;
 
                 // Humidifier/dehumidifier details
-                this.nestDevices[thermostat.serial_number].has_humidifier = thermostat.has_humidifier;
                 this.nestDevices[thermostat.serial_number].target_humidity = thermostat.target_humidity;
                 this.nestDevices[thermostat.serial_number].humidifier_state = thermostat.humidifier_state;
                 this.nestDevices[thermostat.serial_number].dehumidifier_state = thermostat.dehumidifier_state;
@@ -2197,25 +2206,7 @@ NestClass.prototype.__processNestData = function(nestData) {
                 this.nestDevices[thermostat.serial_number].home_name = __makeValidHomeKitName(nestData.structure[nestData.link[thermostat.serial_number].structure.split('.')[1]].name);  // Home name
                 this.nestDevices[thermostat.serial_number].structureID = nestData.link[thermostat.serial_number].structure.split('.')[1]; // structure ID
 
-                // Link in any temperature sensors, checking to ensure any aren't excluded
-                this.nestDevices[thermostat.serial_number].active_rcs_sensor = "";
-                this.nestDevices[thermostat.serial_number].active_temperature = thermostat.backplate_temperature;  // already adjusted temperature
-                this.nestDevices[thermostat.serial_number].linked_rcs_sensors = [];
-                nestData.rcs_settings[thermostat.serial_number].associated_rcs_sensors.forEach(sensor => {
-                    var sensorInfo = nestData.kryptonite[sensor.split('.')[1]];
-                    sensorInfo.serial_number = sensorInfo.serial_number.toUpperCase();
-                    if (this.excludedDevices.includes(sensorInfo.serial_number) == false) {
-                        // Associated temperature sensor isn't excluded
-                        this.nestDevices[thermostat.serial_number].linked_rcs_sensors.push(sensorInfo.serial_number);
-
-                        // Is this sensor the active one? If so, get some details about it
-                        if (nestData.rcs_settings[thermostat.serial_number].active_rcs_sensors.length > 0 && sensorInfo.serial_number == nestData.kryptonite[nestData.rcs_settings[thermostat.serial_number].active_rcs_sensors[0].split('.')[1]].serial_number) {
-                            this.nestDevices[thermostat.serial_number].active_rcs_sensor = nestData.kryptonite[nestData.rcs_settings[thermostat.serial_number].active_rcs_sensors[0].split('.')[1]].serial_number;
-                            this.nestDevices[thermostat.serial_number].active_temperature =  __adjustTemperature(nestData.kryptonite[nestData.rcs_settings[thermostat.serial_number].active_rcs_sensors[0].split('.')[1]].current_temperature, "C", "C")
-                        }
-                    }
-                });
-
+    
                 // Get associated schedules
                 this.nestDevices[thermostat.serial_number].schedules = {};
                 if (typeof nestData.schedule[thermostat.serial_number] == "object") {
@@ -2232,15 +2223,38 @@ NestClass.prototype.__processNestData = function(nestData) {
                 this.extraOptions[thermostat.serial_number] && Object.entries(this.extraOptions[thermostat.serial_number]).forEach(([key, value]) => {
                     this.nestDevices[thermostat.serial_number][key] = value;
                 });
-             }
+
+            }
+
+            // Even if this thermostat is excluded, we need to process any associated temperature sensors that arent excluded
+            if (typeof this.nestDevices[thermostat.serial_number] == "object") {
+                this.nestDevices[thermostat.serial_number].active_rcs_sensor = "";
+                this.nestDevices[thermostat.serial_number].active_temperature = thermostat.backplate_temperature;  // already adjusted temperature
+                this.nestDevices[thermostat.serial_number].linked_rcs_sensors = [];
+            }
+            nestData.rcs_settings[thermostat.serial_number].associated_rcs_sensors.forEach(sensor => {
+                nestData.kryptonite[sensor.split('.')[1]].active_sensor = false;   // Insert new structure element for temperature sensors
+                var sensorInfo = nestData.kryptonite[sensor.split('.')[1]];
+                sensorInfo.serial_number = sensorInfo.serial_number.toUpperCase();
+                if (this.excludedDevices.includes(sensorInfo.serial_number) == false) {
+                    // Associated temperature sensor isn't excluded
+                    this.nestDevices[thermostat.serial_number] && this.nestDevices[thermostat.serial_number].linked_rcs_sensors.push(sensorInfo.serial_number);
+
+                    // Is this sensor the active one? If so, get some details about it
+                    if (nestData.rcs_settings[thermostat.serial_number].active_rcs_sensors.length > 0 && sensorInfo.serial_number == nestData.kryptonite[nestData.rcs_settings[thermostat.serial_number].active_rcs_sensors[0].split('.')[1]].serial_number.toUpperCase()) {
+                        this.nestDevices[thermostat.serial_number] && (this.nestDevices[thermostat.serial_number].active_rcs_sensor = sensorInfo.serial_number);
+                        this.nestDevices[thermostat.serial_number] && (this.nestDevices[thermostat.serial_number].active_temperature =  __adjustTemperature(sensorInfo.current_temperature, "C", "C"));
+                        nestData.kryptonite[sensor.split('.')[1]].active_sensor = true; // This is the active temperature sensor for the thermostat
+                    }
+                }
+            });
         });
 
         nestData.kryptonite && Object.entries(nestData.kryptonite).forEach(([deviceID, sensor]) => {
-            // Process temperature sensors
+            // Process temperature sensors. Needs to be done AFTER thermostat as we insert some extr details in there
             sensor.serial_number = sensor.serial_number.toUpperCase();  // ensure serial numbers are in upper case
             var tempMACAddress = "18B430" + __crc24(sensor.serial_number).toUpperCase(); // Use a Nest Labs prefix for first 6 digits, followed by a CRC24 based off serial number for last 6 digits.
             tempMACAddress = tempMACAddress.substring(0,2) + ":" + tempMACAddress.substring(2,4) + ":" + tempMACAddress.substring(4,6) + ":" + tempMACAddress.substring(6,8) + ":" + tempMACAddress.substring(8,10) + ":" + tempMACAddress.substring(10,12);
-
             if (this.excludedDevices.includes(sensor.serial_number) == false) {
                 // Device is not in excluded list, so include
                 this.nestDevices[sensor.serial_number] = {}
@@ -2249,11 +2263,11 @@ NestClass.prototype.__processNestData = function(nestData) {
                 this.nestDevices[sensor.serial_number].serial_number = sensor.serial_number;
                 this.nestDevices[sensor.serial_number].description = sensor.hasOwnProperty("description") ? __makeValidHomeKitName(sensor.description) : ""; 
                 this.nestDevices[sensor.serial_number].mac_address = tempMACAddress;   // Our created MAC address
-                this.nestDevices[sensor.serial_number].current_temperature = sensor.current_temperature;
                 this.nestDevices[sensor.serial_number].battery_level = sensor.battery_level;
                 this.nestDevices[sensor.serial_number].battery_charging_state = false; // on battery, so doesn't charge
                 this.nestDevices[sensor.serial_number].software_version = "1.0";
                 this.nestDevices[sensor.serial_number].current_temperature = __adjustTemperature(sensor.current_temperature, "C", "C");
+                this.nestDevices[sensor.serial_number].active_sensor = sensor.active_sensor;  // Is this sensor used for the thermostat temperature?
 
                 // Get device location name
                 this.nestDevices[sensor.serial_number].location = "";
@@ -2928,8 +2942,8 @@ if (process.argv.slice(2).length == 1) {  // We only support/process one argumen
     if (configFile.indexOf("/") == -1) configFile = __dirname + "/" + configFile;
 }
 
-console.log("Starting Nest devices HomeKit accessory. We're using HAP-NodeJS library v" + HAPNodeJS.HAPLibraryVersion());
-console.log("Using configuration file '%s'", configFile);
+console.log("Starting Nest_accfactory using HAP-NodeJS library v" + HAPNodeJS.HAPLibraryVersion());
+console.log("Configuration will be read from '%s'", configFile);
 
 // Check that the config file is present before continuing
 if (fs.existsSync(configFile) == true) {
@@ -2941,7 +2955,7 @@ if (fs.existsSync(configFile) == true) {
                 nest.config.debug && console.debug("[NEST] Getting active devices from Nest");
                 nest.getNestData()  // Get of devices we have in our Nest structure
                 .then(() => {
-                    nest.config.debug && console.debug("[NEST] Devices will be advertised using '%s' mDNS provider", nest.config.mDNS);
+                    nest.config.debug && console.debug("[NEST] Devices will be advertised to HomeKit using '%s' mDNS provider", nest.config.mDNS);
                     if (typeof nest.rawNestData.quartz != "object" || (typeof nest.rawNestData.quartz == "object" && isFfmpegValid(FFMPEGLIBARIES) == true)) {
                         // We don't have "quartz" object key, OR we have a "quartz" key AND a valid ffmpeg binary
                         // Means we've validated the ffmpeg binary being used supports the required libraries we need for streaming and/or record
