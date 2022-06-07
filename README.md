@@ -4,7 +4,7 @@ HomeKit Secure Video is supported on doorbells and camera devices
 
 ## Supported Devices
 
-The following Nest devices are support with this project
+The following Nest devices are supported
 
 * Nest Thermostats (Gen 1, Gen 2, Gen 3, E)
 * Nest Protects (Gen 1, Gen 2)
