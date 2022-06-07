@@ -228,18 +228,30 @@ class NexusStreamer {
         this.camera_offline_h264_frame = null;
         if (fs.existsSync(__dirname + "/" + CAMERAOFFLINEH264FILE)) {
             this.camera_offline_h264_frame = fs.readFileSync(__dirname + "/" + CAMERAOFFLINEH264FILE);
+            // remove any H264 NALU from being of any video data. We do this as they are added later when output by our ffmpeg router
+            if (this.camera_offline_h264_frame.indexOf(H264NALUnit) == 0) {
+                this.camera_offline_h264_frame = this.camera_offline_h264_frame.slice(H264NALUnit.length);
+            }
         }
 
         // buffer for camera stream off image in .h264 frame
         this.camera_off_h264_frame = null;
         if (fs.existsSync(__dirname + "/" + CAMERAOFFH264FILE)) {
             this.camera_off_h264_frame = fs.readFileSync(__dirname + "/" + CAMERAOFFH264FILE);
+            // remove any H264 NALU from being of any video data. We do this as they are added later when output by our ffmpeg router
+            if (this.camera_off_h264_frame.indexOf(H264NALUnit) == 0) {
+                this.camera_off_h264_frame = this.camera_off_h264_frame.slice(H264NALUnit.length);
+            }
         }
 
         // buffer for camera stream connecting image in .h264 frame
         this.camera_connecting_h264_frame = null;
         if (fs.existsSync(__dirname + "/" + CAMERACONNECTING264FILE)) {
             this.camera_connecting_h264_frame  = fs.readFileSync(__dirname + "/" + CAMERACONNECTING264FILE);
+            // remove any H264 NALU from being of any video data. We do this as they are added later when output by our ffmpeg router
+            if (this.camera_connecting_h264_frame.indexOf(H264NALUnit) == 0) {
+                this.camera_connecting_h264_frame = this.camera_connecting_h264_frame.slice(H264NALUnit.length);
+            }
         }
 
         this.debug && console.debug("[NEXUS] Streamer created for '%s'", this.host);
@@ -527,7 +539,7 @@ NexusStreamer.prototype.__stopNexusData = function() {
     this.__sendMessage(PacketType.STOP_PLAYBACK, stopBuffer.finish());
 }
 
-NexusStreamer.prototype.__ffmpegRouter = function(type, data, addH264NALU) {
+NexusStreamer.prototype.__ffmpegRouter = function(type, data) {
     // Send out our nexus data to any streams we're managing, including performing any buffering as required
 
     // Add the data to the buffer if its active first up
@@ -548,8 +560,8 @@ NexusStreamer.prototype.__ffmpegRouter = function(type, data, addH264NALU) {
             if (this.ffmpeg[index].aligned == true) {
                 // This is a live streaming stream, and we have been initally aligned to a h264 SPS frame, so send on data now
                 if (type == "video" && this.ffmpeg[index].video != null) {
-                    // Add a H264 NALU to the start of any video data if requested AND not present already
-                    this.ffmpeg[index].video.write((addH264NALU && addH264NALU == true && data.indexOf(H264NALUnit) == -1 ? Buffer.concat([H264NALUnit, data]) : data));
+                    // H264 NAL Units "0001" are required to be added to beginning of any video data we output
+                    this.ffmpeg[index].video.write(Buffer.concat([H264NALUnit, data]));
                 }
                 if (type == "audio" && this.ffmpeg[index].audio != null) { 
                     this.ffmpeg[index].audio.write(data);
@@ -571,8 +583,8 @@ NexusStreamer.prototype.__ffmpegRouter = function(type, data, addH264NALU) {
                         // Should be aligned to buffer h264 frame video sequence of SPS, PPS and IDR frames as receieved from nexus stream
                         // Send anything in buffer from this position
                         if (bufferData.type == "video" && this.ffmpeg[index].video != null) {
-                            // Add a H264 NALU to the start of any video data if requested AND not present already
-                            this.ffmpeg[index].video.write((addH264NALU && addH264NALU == true && data.indexOf(H264NALUnit) == -1 ? Buffer.concat([H264NALUnit, bufferData.data]) : bufferData.data));
+                            // H264 NAL Units "0001" are required to be added to beginning of any video data we output
+                            this.ffmpeg[index].video.write(Buffer.concat([H264NALUnit, bufferData.data]));
                         }
                         if (bufferData.type == "audio" && this.ffmpeg[index].audio != null) {
                             this.ffmpeg[index].audio.write(bufferData.data);
@@ -585,8 +597,8 @@ NexusStreamer.prototype.__ffmpegRouter = function(type, data, addH264NALU) {
                 if (this.ffmpeg[index].aligned == true) {
                     // Didnt need to empty buffer first, and we have been aligned to a h264 SPS frame, so send on data now
                     if (type == "video" && this.ffmpeg[index].video != null) {
-                        // Add a H264 NALU to the start of any video data if requested AND not present already
-                        this.ffmpeg[index].video.write((addH264NALU && addH264NALU == true && data.indexOf(H264NALUnit) == -1 ? Buffer.concat([H264NALUnit, data]) : data));
+                        // H264 NAL Units "0001" are required to be added to beginning of any video data we output
+                        this.ffmpeg[index].video.write(Buffer.concat([H264NALUnit, data]));
                     }
                     if (type == "audio" && this.ffmpeg[index].audio != null) { 
                         this.ffmpeg[index].audio.write(data);
@@ -764,7 +776,7 @@ NexusStreamer.prototype.__handlePlaybackPacket = function(payload) {
 
     // Handle video packet
     if (packet.channel_id === this.videoChannelID) {
-        this.__ffmpegRouter("video", Buffer.from(packet.payload), true);    // Also add in NALU if missing
+        this.__ffmpegRouter("video", Buffer.from(packet.payload));
     }
 
     // Handle audio packet
