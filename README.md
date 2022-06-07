@@ -58,3 +58,7 @@ The options available are within the configuration file are listed below. Some o
 | PersonCooldown   | seconds or milliseconds | Ignore person detection for this time once triggered (Non HKSV only) Default is 2 minutes | global/local |
 | DoorbellCooldown | seconds or milliseconds | Ignore doorbeel button pressed for this time once triggered Default is 1 minute           | global/local |
 | Exclude          | true, false             | Exclude a device                                                                          | local        |
+
+## Docker Image
+
+If you would like to try this in a containerised verson, please check out the [docker hub repository](https://hub.docker.com/r/n0rt0nthec4t/nest_accfactory) for this project
