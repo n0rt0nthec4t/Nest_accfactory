@@ -1,5 +1,5 @@
 # base upon nodejs v17, apline version for smaller container size
-FROM node:17-alpine
+FROM node:17-alpine as builder
 
 # Enable correct timezone inside container
 # Pass TZ env from docker run
@@ -27,4 +27,4 @@ LABEL org.opencontainers.image.title="Nest_accfactory"
 LABEL org.opencontainers.image.description="HomeKit integration for Nest devices based on HAP-NodeJS library"
 LABEL org.opencontainers.image.url="https://github.com/n0rt0nthec4t/Nest_accfactory"
 LABEL org.opencontainers.image.authors="n0rt0nthec4t@outlook.com"
-LABEL org.opencontainers.image.version="v0.0.1"
+LABEL org.opencontainers.image.version="v0.0.2"
