@@ -71,4 +71,4 @@ The options available are within the configuration file are listed below. Some o
 
 ## Docker Image
 
-If you would like to try this in a containerised verson, please check out the [docker hub repository](https://hub.docker.com/r/n0rt0nthec4t/nest_accfactory) for this project
+If you would like to try this in a containerised version, please check out the [docker hub repository](https://hub.docker.com/r/n0rt0nthec4t/nest_accfactory) for this project
