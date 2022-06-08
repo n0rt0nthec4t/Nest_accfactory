@@ -7,9 +7,9 @@
 
 </span>
 
-This is a HAP-NodeJS accessory I have developed to allow Nest devices to be used with HomeKit. 
+This is a HAP-NodeJS accessory I have developed to allow Nest devices to be used with HomeKit including HomeKit Secure Video supported on doorbells and camera devices
 
-HomeKit Secure Video is supported on doorbells and camera devices [^note]
+**HomeKit Secure Video Support is disabled by default and needs to be explicitly enabled by the user**
 
 ## Supported Devices
 
@@ -71,6 +71,3 @@ The options available are within the configuration file are listed below. Some o
 ## Docker Image
 
 If you would like to try this in a containerised verson, please check out the [docker hub repository](https://hub.docker.com/r/n0rt0nthec4t/nest_accfactory) for this project
-
-
-[^note]: HomeKit Secure Video Support is disabled by default and needs to be explicitly enabled by the user
