@@ -19,7 +19,6 @@
 // -- Nest Hello/Cam(s)
 //      -- Subscribe to events rather than polling??? firebase cloud messaging??
 //      -- Reconfiguration of HomeKit streaming details
-//      -- re-code cam event snapshots
 //      -- Improve alert getting
 //
 // -- Nest Thermostat
@@ -102,13 +101,14 @@
 //      -- Added in motion history recording. Appears in Eve Home now
 //      -- Config option for which H264 encoder to use. default is to just copy the stream
 //      -- Better framerate output for HKSV recordings
+//      -- re-code cam event snapshots
 //
 // bugs
 // -- Sarting Jan 2020, google has enabled reCAPTCHA for Nest Accounts. Modfied code to no longer use user/name password login, but access token
 //    Access token can be view by logging in to https//home.nest.com on webbrowser then in going to https://home.nest.com/session  Seems access token expires every 30days
 //    so needs manually updating (haven't seen it expire yet.....)
 //
-// Version 4/6/2022
+// Version 8/6/2022
 // Mark Hulskamp
 
 module.exports = accessories = [];
@@ -1108,7 +1108,7 @@ CameraClass.prototype.addDoorbellCamera = function(HomeKitAccessory, thisService
         });
 
         deviceData.capabilities.includes("audio.microphone") && this.controller.recordingManagement.recordingManagementService.getCharacteristic(Characteristic.RecordingAudioActive).on("set", (value, callback) => {
-            var setValue = (value == Characteristic.RecordingAudioActive.ENABLE ? true : false)
+            var setValue = (value == Characteristic.RecordingAudioActive.ENABLE ? true : false);
             if (setValue != this.nestObject.nestDevices[this.deviceID].properties["audio.enabled"]) {
                 // only change audio recording value if different than on-device
                 this.nestObject.nestDevices[this.deviceID].properties["audio.enabled"] = setValue;  // Store change internally as takes sometime to update Nest
@@ -1399,51 +1399,52 @@ CameraClass.prototype.handleSnapshotRequest = async function(request, callback) 
     var image = Buffer.alloc(0);    // Empty buffer
 
     if (typeof this.nestObject.nestDevices[this.deviceID] == "object") {
-        if (this.nestObject.nestDevices[this.deviceID].streaming_enabled == true && this.nestObject.nestDevices[this.deviceID].online == true) {
-            // grab snapshot from doorbell/camera stream. If we have an current event, get the snapshot for that event for a non-HKSV camera
-            if (this.nestObject.nestDevices[this.deviceID].HKSV == false && this.snapshotEvent.type != "" && this.snapshotEvent.done == false) {
-                await axios.get(this.nestObject.nestDevices[this.deviceID].nexus_api_nest_domain_host + "/event_snapshot/" + this.nestObject.nestDevices[this.deviceID].camera_uuid + "/" + this.snapshotEvent.id + "?crop_type=timeline&width=" + request.width, {responseType: "arraybuffer", headers: {"user-agent": USERAGENT, "accept" : "*/*", [this.nestObject.cameraAPI.key] : this.nestObject.cameraAPI.value + this.nestObject.nestCameraToken}, timeout: NESTAPITIMEOUT, retry: 3 /*, retryDelay: 2000 */})
-                .then(response => {
-                    if (response.status == 200) {
-                        image = response.data;
-                        this.snapshotEvent.done = true;  // Successfully got the snapshot for the event
-                    }
-                })
-                .catch(error => {
-                    this.nestObject.config.debug && console.debug("[NEST] Failed to get event snapshot image. Error", error.message, error.config.url);
-                });
-            } else {
-                    // Get current image from the doorbell/camera feed
+        if (this.nestObject.nestDevices[this.deviceID].HKSV == true) {
+            // Since HKSV is enabled, try getting a snapshot image from the buffer
+            // If no buffering running, the image buffer will still be empty. We can try the old method if that fails 
+            image = await this.NexusStreamer.getBufferSnapshot(ffmpegPath);
+        }
+        if (image.length == 0) {
+            if (this.nestObject.nestDevices[this.deviceID].streaming_enabled == true && this.nestObject.nestDevices[this.deviceID].online == true) {
+                if (this.nestObject.nestDevices[this.deviceID].HKSV == false && this.snapshotEvent.type != "" && this.snapshotEvent.done == false) {
+                    // Grab event snapshot from doorbell/camera stream for a non-HKSV camera
+                    await axios.get(this.nestObject.nestDevices[this.deviceID].nexus_api_nest_domain_host + "/event_snapshot/" + this.nestObject.nestDevices[this.deviceID].camera_uuid + "/" + this.snapshotEvent.id + "?crop_type=timeline&width=" + request.width, {responseType: "arraybuffer", headers: {"user-agent": USERAGENT, "accept" : "*/*", [this.nestObject.cameraAPI.key] : this.nestObject.cameraAPI.value + this.nestObject.nestCameraToken}, timeout: NESTAPITIMEOUT, retry: 3 /*, retryDelay: 2000 */})
+                    .then(response => {
+                        if (response.status == 200) {
+                            this.snapshotEvent.done = true;  // Successfully got the snapshot for the event
+                            image = response.data;
+                        }
+                    })
+                    .catch(error => {
+                    });
+                }
+                if (image.length == 0) {
+                    // Still empty image buffer, so try old method for a direct grab
                     await axios.get(this.nestObject.nestDevices[this.deviceID].nexus_api_http_server_url + "/get_image?uuid=" + this.nestObject.nestDevices[this.deviceID].camera_uuid, {responseType: "arraybuffer", headers: {"user-agent": USERAGENT, "accept" : "*/*", [this.nestObject.cameraAPI.key] : this.nestObject.cameraAPI.value + this.nestObject.nestCameraToken}, timeout: NESTAPITIMEOUT/*, retry: 3, retryDelay: 2000 */})
                     .then(response => {
-                    if (response.status == 200) {
-                        image = response.data;
-                        this.cachedSnapshot = image;    // cache this image
-                    }
-                })
-                .catch(error => {
-                    this.nestObject.config.debug && console.debug("[NEST] Failed to get current snapshot image. Error", error.message, error.config.url);
-                });
+                        if (response.status == 200) {
+                            image = response.data;
+                        }
+                    })
+                    .catch(error => {
+                    });
+                }
             }
-        }
 
-        if (this.nestObject.nestDevices[this.deviceID].streaming_enabled == false && this.nestObject.nestDevices[this.deviceID].online == true) { 
-            // Load "camera switched off" jpg, and return that to image buffer
-            if (fs.existsSync(__dirname + "/" + CAMERAOFFJPGFILE)) {
-                image = fs.readFileSync(__dirname + "/" + CAMERAOFFJPGFILE);
+            if (this.nestObject.nestDevices[this.deviceID].streaming_enabled == false && this.nestObject.nestDevices[this.deviceID].online == true) { 
+                // Load "camera switched off" jpg, and return that to image buffer
+                if (fs.existsSync(__dirname + "/" + CAMERAOFFJPGFILE)) {
+                    image = fs.readFileSync(__dirname + "/" + CAMERAOFFJPGFILE);
+                }
+            }
+    
+            if (this.nestObject.nestDevices[this.deviceID].online == false) {
+                // load "camera offline" jpg, and return that to image buffer
+                if (fs.existsSync(__dirname + "/" + CAMERAOFFLINEJPGFILE)) {
+                    image = fs.readFileSync(__dirname + "/" + CAMERAOFFLINEJPGFILE);
+                }
             }
         }
-
-        if (this.nestObject.nestDevices[this.deviceID].online == false) {
-            // load "camera offline" jpg, and return that to image buffer
-            if (fs.existsSync(__dirname + "/" + CAMERAOFFLINEJPGFILE)) {
-                image = fs.readFileSync(__dirname + "/" + CAMERAOFFLINEJPGFILE);
-            }
-        }
-    }
-    if (image.length == 0) {
-         // catch all for an empty snapshot buffer
-         image = this.cachedSnapshot; // use cached image.. could still be empty
     }
     callback(null, image);
 }

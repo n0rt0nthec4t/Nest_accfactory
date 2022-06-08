@@ -5,11 +5,10 @@
 // Cleaned up/recoded
 //
 // Mark Hulskamp
-// 7/6/2022
+// 8/6/2022
 //
 // done
 // -- switching camera stream on/off - going from off to on doesn't restart stream from Nest
-// -- updated to use websocket's - seem more reliable connection for streaming
 // -- buffering of stream ie: const streaming from nexus
 // -- routing of data to multiple connected ffmpeg processing streams. Allows single connection to nexus for the source stream
 // -- restart connection when dropped if buffering
@@ -17,12 +16,12 @@
 // -- Modification to sending buffer before recording starts. Should result in cleaner ffmpeg process output and more reliable HKSV recordings
 // -- further fixes for restarting streams
 // -- fixed switching camera off/offline image frames to streams
+// -- get snapshot image from buffer if active
 // 
 // todo
 // -- When camera goes offline, we don't get notified straight away and video stream stops. Perhaps timer to go to camera off image if no data receieve in past 15 seconds?
 // -- When first called after starting, get a green screen for about 1 second. Everything is fine after that <- not seen in ages
 //    **Think know what this issue is. When outputting a new stream, need to align to H264 SPS frame
-// -- get snapshot image for current stream if active
 // -- audio echo with return audio
 // -- speed up live image stream starting when have a buffer active. Should almost start straight away
 // -- dynamic audio switching on/off from camera
@@ -36,6 +35,8 @@ var protoBuf = require("pbf");  // Proto buffer
 var fs = require("fs");
 var tls = require("tls");
 var net = require("net");
+var EventEmitter = require("events");
+var {spawn} = require("child_process");
 
 // Define constants
 const USERAGENT = "iPhone iOS 15.4 Dropcam/5.67.0.6 com.nestlabs.jasper.release Darwin";
@@ -423,6 +424,45 @@ NexusStreamer.prototype.update = function(nestToken, tokenType, cameraData) {
             }
         }
     }
+}
+
+NexusStreamer.prototype.getBufferSnapshot = async function(ffmpegPath) {
+    var image = Buffer.alloc(0);    // Empty buffer
+    var events = new EventEmitter.EventEmitter();
+
+    if (this.ffmpeg[BUFFERINDEX].active == true) {
+        var startSpot = -1;
+        for (var index = this.ffmpeg[BUFFERINDEX].buffer.length - 1; index >= 0 && startSpot == -1; index--) {
+            if (this.ffmpeg[BUFFERINDEX].buffer[index].data[0] && ((this.ffmpeg[BUFFERINDEX].buffer[index].data[0] & 0x1f) == H264FrameTypes.SPS) == true) {
+                startSpot = index;
+            }
+        }
+        if (startSpot != -1) {
+            // Should be aligned to buffer h264 frame video sequence of SPS, PPS and IDR frames as receieved from nexus stream
+            // We will output an SPS, PPS and IDR frame to ffmpeg to generate an image
+            var ffmpegCommand = "-hide_banner -f h264 -i pipe:0 -vframes 1 -f image2pipe pipe:1";
+            var ffmpeg = spawn(ffmpegPath || "ffmpeg", ffmpegCommand.split(" "), { env: process.env });
+
+            ffmpeg.stdout.on("data", (data) => {
+                image = Buffer.concat([image, data]);   // Append image data to return buffer
+            });
+
+            ffmpeg.on("exit", (code, signal) => {
+                events.emit("ffmpeg");
+            });
+
+            if (startSpot <= this.ffmpeg[BUFFERINDEX].buffer.length - 3) {
+                ffmpeg.stdin.write(Buffer.concat([H264NALUnit, this.ffmpeg[BUFFERINDEX].buffer[startSpot].data])); // SPS
+                ffmpeg.stdin.write(Buffer.concat([H264NALUnit, this.ffmpeg[BUFFERINDEX].buffer[startSpot + 1].data])); // PPS
+                ffmpeg.stdin.write(Buffer.concat([H264NALUnit, this.ffmpeg[BUFFERINDEX].buffer[startSpot + 2].data])); // IDR
+            }
+            ffmpeg.stdin.end();
+
+            await EventEmitter.once(events, "ffmpeg");
+            events.removeAllListeners("ffmpeg");
+        }
+    }
+    return image;
 }
 
 NexusStreamer.prototype.__connect = function(host) {
