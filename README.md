@@ -73,6 +73,6 @@ The options available are within the configuration file are listed below. Some o
 
 If you would like to try this in a containerised version, please check out the [docker hub repository](https://hub.docker.com/r/n0rt0nthec4t/nest_accfactory) for this project
 
-##Caveats
+## Caveats
 
 Nest_accfactory is a hobby project of mine, provided as-is, with no warranty whatsoever. I've been running it successfully at my home, but your mileage might vary.
