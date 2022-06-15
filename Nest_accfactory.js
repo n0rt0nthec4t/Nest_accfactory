@@ -58,6 +58,8 @@
 // -- Setting nest structure element updated to later entry point
 // -- Uses StatusFault for device offline, removed from base etc
 // -- Granular debugging. options support are true ("nest,nexus,hksv"), false or a string with comma-delimited values made up if "nest,nexus,hksv,ffmpeg,external". 
+// -- Switch to using AbortController to cancel axios requests. Requires nodejs v15.4 or later now
+// -- weather accessory using nest weather data
 //
 // -- Nest Thermostat
 //      -- Migrated from NestThermostat_accfactory (v4) coding
@@ -109,7 +111,7 @@
 //    Access token can be view by logging in to https//home.nest.com on webbrowser then in going to https://home.nest.com/session  Seems access token expires every 30days
 //    so needs manually updating (haven't seen it expire yet.....)
 //
-// Version 8/6/2022
+// Version 15/6/2022
 // Mark Hulskamp
 
 module.exports = accessories = [];
@@ -169,6 +171,7 @@ const NESTAPITIMEOUT = 10000;                                   // Calls to Nest
 const CAMERAALERTPOLLING = 2000;                                // Camera alerts polling timer
 const CAMERAZONEPOLLING = 30000;                                // Camera zones changes polling timer
 const LOWBATTERYLEVEL = 10;                                     // Low battery level percentage
+const WEATHERSTATIONREFRESH = 300000;                           // Refresh weather data every 5mins
 const CONFIGURATIONFILE = "Nest_config.json";                   // Default configuration file name, located in current directory
 const CAMERAOFFLINEJPGFILE = "Nest_camera_offline.jpg";         // Camera offline jpg image file
 const CAMERAOFFJPGFILE = "Nest_camera_off.jpg";                 // Camera off jpg image file
@@ -201,7 +204,8 @@ const Debugging = {
     NEXUS : "nexus",
     FFMPEG : "ffmpeg",
     HKSV : "hksv",
-    EXTERNAL : "external"
+    EXTERNAL : "external",
+    WEATHER : "weather"
 }
 
 
@@ -210,33 +214,34 @@ class NestClass extends EventEmitter {
 	constructor(configFile) {
         super();
 
-        this.nestToken = "";                        // Access token for Nest API requests
-        this.nestCameraToken = "";                  // Access token for Camera API requests
-        this.nestTokenType = "";                    // Type of account we authorised to Nest with
-        this.cameraAPI = {key: "", value: ""};      // Header Keys for camera API calls
-        this.nestURL = "";                          // URL for nest requests
-        this.nestID = "";                           // User ID
-        this.tokenExpire = null;                    // Time when token expires (in Unix timestamp)
-        this.tokenTimer = null;                     // Handle for token refresh timer
-        this.rawNestData = {};                      // Full copy of nest structure data
-        this.previousDevices = {};                  // Our previous processed Nest devices
-        this.nestDevices = {};                      // Our current processed Nest devices
-        this.deviceEvents = {};                     // array of device id's linking to HomeKit accessory 
-        this.excludedDevices = [];                  // array of excluded devices (by serial number). We don't process these devices
-        this.extraOptions = {};                     // Extra options per device to inject into Nest data stream
-        this.cancel = null;
-        this.startTime = null;                      // Time we started the object. used to filter out old alerts
-        this.config = {                             // Configuration object
-            debug : "",                             // Enable debug output, off by default
-            refreshToken : "",                      // Session token. Used for Nest accounts
-            sessionToken : "",                      // Refresh token. Used for Google accounts
-            HKSV : false,                           // Enable HKSV for all camera/doorbells, no by default
-            HKSVPreBuffer : 15000,                  // Milliseconds seconds to hold in buffer. default is 15secs. using 0 disables pre-buffer
-            doorbellCooldown : 60000,               // Default cooldown period for doorbell button press (1min/60secs)
-            motionCooldown : 60000,                 // Default cooldown period for motion detected (1min/60secs)
-            personCooldown : 120000,                // Default cooldown person for person detected (2mins/120secs)
-            H264Encoder : VideoCodecs.COPY,         // Default H264 Encoder for HKSV recording
-            mDNS : MDNSAdvertiser.BONJOUR           // Default mDNS advertiser for HAP-NodeJS library
+        this.nestToken = "";                            // Access token for Nest API requests
+        this.nestCameraToken = "";                      // Access token for Camera API requests
+        this.nestTokenType = "";                        // Type of account we authorised to Nest with
+        this.cameraAPI = {key: "", value: ""};          // Header Keys for camera API calls
+        this.nestURL = "";                              // URL for nest requests
+        this.nestID = "";                               // User ID
+        this.tokenExpire = null;                        // Time when token expires (in Unix timestamp)
+        this.tokenTimer = null;                         // Handle for token refresh timer
+        this.rawNestData = {};                          // Full copy of nest structure data
+        this.previousDevices = {};                      // Our previous processed Nest devices
+        this.nestDevices = {};                          // Our current processed Nest devices
+        this.deviceEvents = {};                         // array of device id's linking to HomeKit accessory 
+        this.excludedDevices = [];                      // array of excluded devices (by serial number). We don't process these devices
+        this.extraOptions = {};                         // Extra options per device to inject into Nest data stream
+        this.abortController = new AbortController();   // Aboort controller object
+        this.startTime = null;                          // Time we started the object. used to filter out old alerts
+        this.config = {
+            debug : "",                                 // Enable debug output, off by default
+            refreshToken : "",                          // Session token. Used for Nest accounts
+            sessionToken : "",                          // Refresh token. Used for Google accounts
+            weather : false,                            // Create a virtual weather station using Nest weather data
+            HKSV : false,                               // Enable HKSV for all camera/doorbells, no by default
+            HKSVPreBuffer : 15000,                      // Milliseconds seconds to hold in buffer. default is 15secs. using 0 disables pre-buffer
+            doorbellCooldown : 60000,                   // Default cooldown period for doorbell button press (1min/60secs)
+            motionCooldown : 60000,                     // Default cooldown period for motion detected (1min/60secs)
+            personCooldown : 120000,                    // Default cooldown person for person detected (2mins/120secs)
+            H264Encoder : VideoCodecs.COPY,             // Default H264 Encoder for HKSV recording and streaming
+            mDNS : MDNSAdvertiser.BONJOUR               // Default mDNS advertiser for HAP-NodeJS library
         };
 
         // Load configuration
@@ -249,6 +254,7 @@ class NestClass extends EventEmitter {
                 key = key.toUpperCase();    // Make key uppercase. Saves doing every time below
                 if (key == "SESSIONTOKEN" && typeof value == "string") this.config.sessionToken = value;  // Nest accounts Session token to use for Nest calls
                 if (key == "REFRESHTOKEN" && typeof value == "string") this.config.refreshToken = value;  // Google accounts refresh token to use for Nest calls
+                if (key == "WEATHER" && typeof value == "boolean") this.config.weather = value;    // Virtual weather station
                 if (key == "DEBUG" && typeof value == "boolean" && value == true) this.config.debug = "nestnexushksv";  // Debugging output will Nest, HKSV and NEXUS
                 if (key == "DEBUG" && typeof value == "string") {
                     // Comma delimited string for what we output in debugging
@@ -356,7 +362,6 @@ class NestClass extends EventEmitter {
         }
 
         // Create h264 frames for camera off/offline dynamically in video streams. Only required for non-HKSV video devices
-        this.config.debug.includes(Debugging.NEXUS) && console.debug("[NEXUS] Creating camera off and camera offline image frame files");
         var ffmpegCommand = "-hide_banner -loop 1 -i " + __dirname + "/" + CAMERAOFFLINEJPGFILE + " -vframes 1 -r 15 -y -f h264 -profile:v main " + __dirname + "/" + CAMERAOFFLINEH264FILE;
         spawnSync(ffmpegPath || "ffmpeg", ffmpegCommand.split(" "), { env: process.env });
         var ffmpegCommand = "-hide_banner -loop 1 -i " + __dirname + "/" + CAMERAOFFJPGFILE + " -vframes 1 -r 15 -y -f h264 -profile:v main " + __dirname + "/" + CAMERAOFFH264FILE;
@@ -437,6 +442,18 @@ function CameraClass() {
         video: null,                            // video input stream
         audio: null                             // audio input stream
     };
+}
+
+// Create weather object
+function WeatherClass() {
+    this.deviceID = null;                       // Device ID for this Nest Weather station (structure ID)
+    this.nestObject = null;
+    this.BatteryService = null;
+    this.airPressureService = null;
+    this.TemperatureService = null;
+    this.HumidityService = null;
+    this.refreshTimer = null;
+    this.historyService = null;                 // History logging service
 }
 
 
@@ -1344,7 +1361,7 @@ CameraClass.prototype.closeRecordingStream = function(streamId, reason) {
     this.HKSVRecorder.audio = null; // No more audio stream handle
     this.events.emit(MP4BOX);   // This will ensure we clean up out of our segment generator
     this.events.removeAllListeners(MP4BOX, this.segmentGenerator);  // Tidy up our event listeners
-    if (this.nestObject.config.debug == true) {
+    if (this.nestObject.config.debug.includes(Debugging.HKSV) == true) {
         // Log recording finished messages depending on reason
         if (reason == HDSProtocolSpecificErrorReason.NORMAL) {
             console.debug("[HKSV] Recording completed on '%s'", this.nestObject.nestDevices[this.deviceID].mac_address);
@@ -1826,6 +1843,66 @@ CameraClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData) {
     }
 }
 
+// Weather station object
+WeatherClass.prototype.addWeatherStation = function(HomeKitAccessory, thisServiceName, serviceNumber, deviceData) {
+    this.TemperatureService = HomeKitAccessory.addService(Service.TemperatureSensor, __makeValidHomeKitName(deviceData.location), 1);
+    this.airPressureService = HomeKitAccessory.addService(Service.EveAirPressureSensor, "", 1);
+    this.HumidityService = HomeKitAccessory.addService(Service.HumiditySensor, __makeValidHomeKitName(deviceData.location), 1);  
+    this.BatteryService = HomeKitAccessory.addService(Service.BatteryService, "", 1);
+    this.BatteryService.updateCharacteristic(Characteristic.ChargingState, Characteristic.ChargingState.NOT_CHARGEABLE);    // Really not chargeable ;-)
+
+    // Add custom weather characteristics
+    this.TemperatureService.addCharacteristic(Characteristic.ForecastDay);
+    this.TemperatureService.addCharacteristic(Characteristic.ObservationStation);
+    this.TemperatureService.addCharacteristic(Characteristic.Condition);
+    this.TemperatureService.addCharacteristic(Characteristic.WindDirection);
+    this.TemperatureService.addCharacteristic(Characteristic.WindSpeed);
+    this.TemperatureService.addCharacteristic(Characteristic.SunriseTime);
+    this.TemperatureService.addCharacteristic(Characteristic.SunsetTime);
+
+    HomeKitAccessory.setPrimaryService(this.TemperatureService);
+
+    // Setup logging and link into EveHome if configured todo so
+    this.historyService = new HomeKitHistory(HomeKitAccessory, {});
+    this.historyService.linkToEveHome(HomeKitAccessory, this.airPressureService, {});
+
+    this.updateHomeKit(HomeKitAccessory, deviceData);  // Do initial HomeKit update
+    console.log("Created Nest virtual weather station on '%s' updating every '%s' seconds", HomeKitAccessory.username, (WEATHERSTATIONREFRESH / 1000));
+}
+
+WeatherClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData) {
+    var deviceData = this.nestObject.nestDevices[this.deviceID];    // Update data
+
+    this.TemperatureService.updateCharacteristic(Characteristic.Name, __makeValidHomeKitName(deviceData.location));  // Just in case
+    this.HumidityService.updateCharacteristic(Characteristic.Name, __makeValidHomeKitName(deviceData.location));  // Just in case
+    this.BatteryService.updateCharacteristic(Characteristic.BatteryLevel, 100); // Always %100
+    this.BatteryService.updateCharacteristic(Characteristic.StatusLowBattery, Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL);
+
+    axios.get("https://home.nest.com/api/0.1/weather/forecast/" + deviceData.latitude + "," + deviceData.longitude, {timeout: 10000})
+    .then(response => {
+        if (response.status == 200) {
+            this.TemperatureService.updateCharacteristic(Characteristic.CurrentTemperature, response.data.now.current_temperature);
+            this.HumidityService.updateCharacteristic(Characteristic.CurrentRelativeHumidity, response.data.now.current_humidity);
+            this.airPressureService.getCharacteristic(Characteristic.EveAirPressure, 0);
+            this.airPressureService.updateCharacteristic(Characteristic.EveElevation, 610);
+
+            // Update custom characteristics
+            this.TemperatureService.updateCharacteristic(Characteristic.ForecastDay, response.data.forecast.daily[0].conditions);
+            this.TemperatureService.updateCharacteristic(Characteristic.ObservationStation, response.data.display_city);
+            this.TemperatureService.updateCharacteristic(Characteristic.Condition, response.data.now.conditions);
+            this.TemperatureService.updateCharacteristic(Characteristic.WindDirection, response.data.now.wind_direction);
+            this.TemperatureService.updateCharacteristic(Characteristic.WindSpeed, response.data.now.current_wind);
+            this.TemperatureService.updateCharacteristic(Characteristic.SunriseTime, new Date(response.data.now.sunrise * 1000).toLocaleTimeString());
+            this.TemperatureService.updateCharacteristic(Characteristic.SunsetTime, new Date(response.data.now.sunset * 1000).toLocaleTimeString());
+
+            // Record history
+            this.historyService.addHistory(this.airPressureService, {time: Math.floor(new Date() / 1000), temperature: response.data.now.current_temperature, humidity: response.data.now.current_humidit, pressure: 0}, 300);
+        } else {
+            this.nestObject.config.includes(Debugging.WEATHER) && console.debug("[WEATHER] Failed to get Nest weather data for '%s' using '%s/%s", deviceData.location, deviceData.latitude, deviceData.longitude);
+        }
+    });
+}
+
 
 // Nest object
 NestClass.prototype.nestConnect = async function() {
@@ -2023,6 +2100,14 @@ NestClass.prototype.deviceSubscribe = function(deviceID, HomeKitAccessory, callb
                         this.__nestCameraPolling(deviceID, "zones");    // for zones
                     }
                 }
+
+                if (this.nestDevices[deviceID].device_type == "weather") {
+                    this.config.debug.includes(Debugging.WEATHER) && console.debug("[NEST] Setup polling loop for weather updates on '%s'", HomeKitAccessory.username);
+                    // Setup a loop to notifity the "weather" accessory every 5mins to update
+                    setInterval(() => {
+                        this.emit(deviceID, this.deviceEvents[deviceID].accessory, this.nestDevices[deviceID]);
+                    }, WEATHERSTATIONREFRESH);
+                }
             }
         }
 
@@ -2038,7 +2123,7 @@ NestClass.prototype.deviceSubscribe = function(deviceID, HomeKitAccessory, callb
                     // TODO
                 }
             }
-            this.cancel && this.cancel("Subscription update loop cancelled");
+            this.abortController && this.abortController.abort();
         }
     }
 }
@@ -2404,6 +2489,27 @@ NestClass.prototype.__processNestData = function(nestData) {
                 });
             }  
         });
+
+        // Make up a virtual weather station data
+        nestData.structure && Object.entries(nestData.structure).forEach(([deviceID, structure]) => {
+            // Process structure
+            var tempMACAddress = "18B430" + __crc24(deviceID).toUpperCase(); // Use a Nest Labs prefix for first 6 digits, followed by a CRC24 based off structure for last 6 digits.
+            var serial_number = tempMACAddress; // Serial number will be the mac address we've created
+            tempMACAddress = tempMACAddress.substring(0,2) + ":" + tempMACAddress.substring(2,4) + ":" + tempMACAddress.substring(4,6) + ":" + tempMACAddress.substring(6,8) + ":" + tempMACAddress.substring(8,10) + ":" + tempMACAddress.substring(10,12);
+            
+            this.nestDevices[serial_number] = {};
+            this.nestDevices[serial_number].device_type = "weather";
+            this.nestDevices[serial_number].mac_address = tempMACAddress;
+            this.nestDevices[serial_number].nest_device_structure = "structure." + deviceID;
+            this.nestDevices[serial_number].location = structure.location;
+            this.nestDevices[serial_number].serial_number = serial_number;
+            this.nestDevices[serial_number].postal_code = structure.postal_code;
+            this.nestDevices[serial_number].country_code = structure.country_code;
+            this.nestDevices[serial_number].city = structure.city;
+            this.nestDevices[serial_number].state = structure.state;
+            this.nestDevices[serial_number].latitude = structure.latitude;
+            this.nestDevices[serial_number].longitude = structure.longitude;
+        });
     }
 }
 
@@ -2535,7 +2641,7 @@ NestClass.prototype.__nestSubscribe = async function() {
         headers: {"user-agent": USERAGENT, "Authorization": "Basic " + this.nestToken}, 
         responseType: "json", 
         timeout: 120000, // 2 minutes
-        cancelToken: new axios.CancelToken(c => { this.cancel = c; })
+        signal: this.abortController.signal
     })
     .then(async (response) => {
         if (response.status && response.status == 200) {
@@ -2863,6 +2969,31 @@ function processDeviceforHomeKit(nestObjectClass, deviceData, action) {
                 accessories.push(tempAccessory);   // Push onto export array for HAP-NodeJS "accessory factory"
                 tempAccessory.publish({username: tempAccessory.username, pincode: tempAccessory.pincode, category: tempAccessory.category, advertiser: nest.config.mDNS}); // Publish accessory on local network
                 nestObjectClass.deviceSubscribe(tempAccessory.__thisObject.deviceID, tempAccessory, tempAccessory.__thisObject.updateHomeKit.bind(tempAccessory.__thisObject), "add");
+                break;
+            }
+
+            case "weather" : {
+                // "Virtual" weather station
+                if (nest.config.weather == true) {
+                    var tempAccessory = exports.accessory = new Accessory("Nest Weather", uuid.generate("hap-nodejs:accessories:nest_" + deviceData.serial_number));
+                    tempAccessory.username = deviceData.mac_address;
+                    tempAccessory.pincode = AccessoryPincode;
+                    tempAccessory.category = Accessory.Categories.SENSOR;
+                    tempAccessory.getService(Service.AccessoryInformation).setCharacteristic(Characteristic.Manufacturer, "Nest");
+                    tempAccessory.getService(Service.AccessoryInformation).setCharacteristic(Characteristic.Model, "Weather");
+                    tempAccessory.getService(Service.AccessoryInformation).setCharacteristic(Characteristic.SerialNumber, deviceData.serial_number);
+                    tempAccessory.getService(Service.AccessoryInformation).setCharacteristic(Characteristic.FirmwareRevision, "1.0.0");
+
+                    tempAccessory.__thisObject = new WeatherClass(); // Store the object
+                    tempAccessory.__thisObject.deviceID = deviceData.serial_number;
+                    tempAccessory.__thisObject.deviceStructure = deviceData.nest_device_structure;
+                    tempAccessory.__thisObject.nestObject = nestObjectClass;
+                    tempAccessory.__thisObject.addWeatherStation(tempAccessory, tempName, 1, deviceData);
+           
+                    accessories.push(tempAccessory);   // Push onto export array for HAP-NodeJS "accessory factory"
+                    tempAccessory.publish({username: tempAccessory.username, pincode: tempAccessory.pincode, category: tempAccessory.category, advertiser: nest.config.mDNS}); // Publish accessory on local network
+                    nestObjectClass.deviceSubscribe(tempAccessory.__thisObject.deviceID, tempAccessory, tempAccessory.__thisObject.updateHomeKit.bind(tempAccessory.__thisObject), "add");
+                }
                 break;
             }
         }
