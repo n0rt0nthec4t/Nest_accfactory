@@ -59,7 +59,7 @@ The options available are within the configuration file are listed below. Some o
 |------------------|-------------------------|-------------------------------------------------------------------------------------------|--------------|
 | RefreshToken     |                         | Google account refresh token                                                              | global       |
 | SessionToken     |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
-| Weather          | true, false             | Creates a "virtual" weather station using Nest weather data                               | global       |
+| Weather          | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
 | Debug            | true, false             | Turns debugging on or off. Default is off                                                 | global       |
 | mDNS             | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is ciao                                           | global       |
 | HKSV             | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras. Default is off.           | global/local |
@@ -77,3 +77,12 @@ If you would like to try this in a containerised version, please check out the [
 ## Caveats
 
 Nest_accfactory is a hobby project of mine, provided as-is, with no warranty whatsoever. I've been running it successfully at my home, but your mileage might vary.
+
+## Changelog
+
+| Version          | Changes                                                                                                                            |
+|------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| v0.0.3           | Improvements to maintaining network connection for HKSV buffering                                                                  |
+|                  | New option to have a "virtual" weather station using Nest weather data. Enabled in configuration                                   |
+| v0.0.1           | Initial release to this repository                                                                                                 |
+
