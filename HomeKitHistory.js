@@ -18,11 +18,10 @@
 // -- internally check if specified minimun time between entries and if so, ignore logging it
 // -- small correction to number formatting when retreving history for EveHome
 // -- Storage access fix when using HAP-NodeJS as a library (removes dependancy on node-persist modules for this module)
+// -- Debugging option
 //
-// Version 23/5/2022
+// Version 16/6/2022
 // Mark Hulskamp
-
-const MAX_HISTORY_SIZE = 16384; // 16k entries
 
 // Define HAP-NodeJS requirements
 var HAPNodeJS = require("hap-nodejs");
@@ -34,6 +33,9 @@ var HAPStorage = HAPNodeJS.HAPStorage;
 var util = require("util");
 var fs = require("fs");
 
+// Define constants
+const MAX_HISTORY_SIZE = 16384; // 16k entries
+
 
 // Create the history object
 class HomeKitHistory {
@@ -42,10 +44,12 @@ class HomeKitHistory {
         if (typeof (optionalParams) === "object") {
             this.maxEntries = optionalParams.maxEntries || MAX_HISTORY_SIZE; // used for rolling history. if 0, means no rollover
             this.location = optionalParams.location || "";
+            this.debug = optionalParams.debug || false;
         }
         else {
             this.maxEntries = MAX_HISTORY_SIZE; // used for rolling history. if 0, means no rollover
             this.location = "";
+            this.debug = false; // No debugging by default
         }
 
         // Setup HomeKitHistory storage using HAP-NodeJS persist location
@@ -622,7 +626,7 @@ HomeKitHistory.prototype.linkToEveHome = function(HomeKitAccessory, service, opt
                             }
 
                             default : {
-                                console.log("DEBUG: Unknown Eve MotionBlinds command '%s' with data '%s'", command, data);
+                                this.debug && console.debug("[HISTORY] Unknown Eve MotionBlinds command '%s' with data '%s'", command, data);
                                 break;
                             }
                         }
@@ -880,7 +884,7 @@ HomeKitHistory.prototype.linkToEveHome = function(HomeKitAccessory, service, opt
                             }
 
                             default : {
-                                console.log("DEBUG: Unknown Eve Thermo command '%s'", command);
+                                this.debug && console.debug("[HISTORY] Unknown Eve Thermo command '%s'", command);
                                 break
                             }
                         }
@@ -1013,7 +1017,7 @@ HomeKitHistory.prototype.linkToEveHome = function(HomeKitAccessory, service, opt
                             }
 
                             default : {
-                                console.log("DEBUG: Unknown Eve Motion command '%s' with data '%s'", command, data);
+                                this.debug && console.debug("[HISTORY] Unknown Eve Motion command '%s' with data '%s'", command, data);
                                 break;
                             }
                         }
@@ -1085,7 +1089,7 @@ HomeKitHistory.prototype.linkToEveHome = function(HomeKitAccessory, service, opt
                                     processedData.statusled = this.__EveSmokePersist.statusled;
                                 }
                                 if (subCommand != 0x02 && subCommand != 0x05) {
-                                    console.log("DEBUG: Unknown Eve Smoke command '%s' with data '%s'", command, data);
+                                    this.debug && console.debug("[HISTORY] Unknown Eve Smoke command '%s' with data '%s'", command, data);
                                 }
                                 break;
                             }
@@ -1097,7 +1101,7 @@ HomeKitHistory.prototype.linkToEveHome = function(HomeKitAccessory, service, opt
                            // }
 
                             default : {
-                                console.log("DEBUG: Unknown Eve Smoke command '%s' with data '%s'", command, data);
+                                this.debug && console.debug("[HISTORY] Unknown Eve Smoke command '%s' with data '%s'", command, data);
                                 break;
                             }
                         }
@@ -1280,7 +1284,7 @@ HomeKitHistory.prototype.linkToEveHome = function(HomeKitAccessory, service, opt
                             }
 
                             default : {
-                                console.log("DEBUG: Unknown Eve Aqua command '%s' with data '%s'", command, data);
+                                this.debug && console.debug("[HISTORY] Unknown Eve Aqua command '%s' with data '%s'", command, data);
                                 break;
                             }
                         }
@@ -1448,7 +1452,7 @@ HomeKitHistory.prototype.__EveHistoryStatus = function(callback) {
         numberToEveHexString(1, 8));  // first entry
         
     callback(null, encodeEveData(value));
-    // console.log("DEBUG: __EveHistoryStatus: history for '%s:%s' (%s) - Entries %s", this.EveHome.type, this.EveHome.sub, this.EveHome.evetype, this.EveHome.count);
+    // this.debug && console.debug("[HISTORY] __EveHistoryStatus: history for '%s:%s' (%s) - Entries %s", this.EveHome.type, this.EveHome.sub, this.EveHome.evetype, this.EveHome.count);
 }
 
 HomeKitHistory.prototype.__EveHistoryEntries = function(callback) {
@@ -1634,13 +1638,13 @@ HomeKitHistory.prototype.__EveHistoryEntries = function(callback) {
         }
         if (this.EveHome.entry > this.EveHome.count) {
             // No more history data to send back
-            // console.log("DEBUG: __EveHistoryEntries: sent '%s' entries to EveHome ('%s') for '%s:%s'", this.EveHome.send, this.EveHome.evetype, this.EveHome.type, this.EveHome.sub);
+            // this.debug && console.debug("[HISTORY] __EveHistoryEntries: sent '%s' entries to EveHome ('%s') for '%s:%s'", this.EveHome.send, this.EveHome.evetype, this.EveHome.type, this.EveHome.sub);
             this.EveHome.send = 0;  // no more to send
             dataStream += "00";
         }
     } else {
          // We're not transferring any data back
-        // console.log("DEBUG: __EveHistoryEntries: do we ever get here.....???", this.EveHome.send, this.EveHome.evetype, this.EveHome.type, this.EveHome.sub, this.EveHome.entry);
+        // this.debug && console.debug("[HISTORY] __EveHistoryEntries: do we ever get here.....???", this.EveHome.send, this.EveHome.evetype, this.EveHome.type, this.EveHome.sub, this.EveHome.entry);
         this.EveHome.send = 0;  // no more to send
         dataStream = "00";
     }
@@ -1655,14 +1659,14 @@ HomeKitHistory.prototype.__EveHistoryRequest = function(value, callback) {
     }
     this.EveHome.send = (this.EveHome.count - this.EveHome.entry + 1);    // Number of entries we're expected to send
     callback();
-    // console.log("DEBUG: __EveHistoryRequest: requested address", this.EveHome.entry);
+    // this.debug && console.debug("[HISTORY] __EveHistoryRequest: requested address", this.EveHome.entry);
 }
 
 HomeKitHistory.prototype.__EveSetTime = function(value, callback) {
     // Time stamp from EveHome
     var timestamp = (EPOCH_OFFSET + EveHexStringToNumber(decodeEveData(value)));
     callback();
-    // console.log("DEBUG: __EveSetTime: timestamp offset", new Date(timestamp * 1000));
+    // this.debug && console.debug("[HISTORY] __EveSetTime: timestamp offset", new Date(timestamp * 1000));
 }
 
 // Eve Reset Total

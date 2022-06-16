@@ -205,7 +205,8 @@ const Debugging = {
     FFMPEG : "ffmpeg",
     HKSV : "hksv",
     EXTERNAL : "external",
-    WEATHER : "weather"
+    WEATHER : "weather",
+    HISTORY : "history"
 }
 
 
@@ -264,6 +265,8 @@ class NestClass extends EventEmitter {
                     if (value.toUpperCase().includes("HKSV") == true) this.config.debug += Debugging.HKSV;
                     if (value.toUpperCase().includes("FFMPEG") == true) this.config.debug += Debugging.FFMPEG;
                     if (value.toUpperCase().includes("EXTERNAL") == true) this.config.debug += Debugging.EXTERNAL;
+                    if (value.toUpperCase().includes("HISTORY") == true) this.config.debug += Debugging.HISTORY;
+                    if (value.toUpperCase().includes("WEATHER") == true) this.config.debug += Debugging.WEATHER;
                 }
                 if (key == "HKSV" && typeof value == "boolean") this.config.HKSV = value;    // Global HomeKit Secure Video?
                 if (key == "MDNS" && typeof value == "string") {
@@ -521,7 +524,7 @@ ThermostatClass.prototype.addThermostat = function(HomeKitAccessory, thisService
 
     // Setup logging
     this.historyService = new HomeKitHistory(HomeKitAccessory, {});
-    this.historyService.linkToEveHome(HomeKitAccessory, this.ThermostatService, {});
+    this.historyService.linkToEveHome(HomeKitAccessory, this.ThermostatService, {debug: this.nestObject.config.debug.includes("HISTORY")});
 
     this.updateHomeKit(HomeKitAccessory, deviceData);  // Do initial HomeKit update
     console.log("Setup Nest Thermostat '%s' on '%s'", thisServiceName, HomeKitAccessory.username, (this.HumidityService != null ? "with seperate humidity sensor" : ""));
@@ -844,7 +847,7 @@ TempSensorClass.prototype.addTemperatureSensor = function(HomeKitAccessory, this
 
     // Setup logging
     this.historyService = new HomeKitHistory(HomeKitAccessory, {});
-    this.historyService.linkToEveHome(HomeKitAccessory, this.TemperatureService, {});
+    this.historyService.linkToEveHome(HomeKitAccessory, this.TemperatureService, {debug: this.nestObject.config.debug.includes("HISTORY")});
 
     this.updateHomeKit(HomeKitAccessory, deviceData);  // Do initial HomeKit update    
     console.log("Setup Nest Temperature Sensor '%s' on '%s'", thisServiceName, HomeKitAccessory.username);
@@ -912,7 +915,8 @@ SmokeSensorClass.prototype.addSmokeCOSensor = function(HomeKitAccessory, thisSer
                                                                               EveSmoke_hushedstate: deviceData.hushed_state,
                                                                               EveSmoke_statusled: deviceData.ntp_green_led,
                                                                               EveSmoke_smoketestpassed: deviceData.smoke_test_passed,
-                                                                              EveSmoke_heattestpassed: deviceData.heat_test_passed
+                                                                              EveSmoke_heattestpassed: deviceData.heat_test_passed,
+                                                                              debug: this.nestObject.config.debug.includes("HISTORY")
                                                                              });
 
     this.updateHomeKit(HomeKitAccessory, deviceData);  // Do initial HomeKit update
@@ -1146,7 +1150,7 @@ CameraClass.prototype.addDoorbellCamera = function(HomeKitAccessory, thisService
 
     // Setup logging. We'll log motion history on the main motion service
     this.historyService = new HomeKitHistory(HomeKitAccessory, {});
-    this.MotionServices[0] && this.historyService.linkToEveHome(HomeKitAccessory, this.MotionServices[0].service, {});  // Link to Eve Home if we have atleast the main montion service
+    this.MotionServices[0] && this.historyService.linkToEveHome(HomeKitAccessory, this.MotionServices[0].service, {debug: this.nestObject.config.debug.includes("HISTORY")});  // Link to Eve Home if we have atleast the main montion service
 
     this.updateHomeKit(HomeKitAccessory, deviceData);  // Do initial HomeKit update
     console.log("Setup %s '%s' on '%s'", HomeKitAccessory.displayName, thisServiceName, HomeKitAccessory.username, deviceData.HKSV == true ? "with HomeKit Secure Video" : this.MotionServices.length >= 1 ? "with motion sensor(s)" : "");
@@ -1845,9 +1849,9 @@ CameraClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData) {
 
 // Weather station object
 WeatherClass.prototype.addWeatherStation = function(HomeKitAccessory, thisServiceName, serviceNumber, deviceData) {
-    this.TemperatureService = HomeKitAccessory.addService(Service.TemperatureSensor, __makeValidHomeKitName(deviceData.location), 1);
+    this.TemperatureService = HomeKitAccessory.addService(Service.TemperatureSensor, thisServiceName, 1);
     this.airPressureService = HomeKitAccessory.addService(Service.EveAirPressureSensor, "", 1);
-    this.HumidityService = HomeKitAccessory.addService(Service.HumiditySensor, __makeValidHomeKitName(deviceData.location), 1);  
+    this.HumidityService = HomeKitAccessory.addService(Service.HumiditySensor, thisServiceName, 1);  
     this.BatteryService = HomeKitAccessory.addService(Service.BatteryService, "", 1);
     this.BatteryService.updateCharacteristic(Characteristic.ChargingState, Characteristic.ChargingState.NOT_CHARGEABLE);    // Really not chargeable ;-)
 
@@ -1864,10 +1868,10 @@ WeatherClass.prototype.addWeatherStation = function(HomeKitAccessory, thisServic
 
     // Setup logging and link into EveHome if configured todo so
     this.historyService = new HomeKitHistory(HomeKitAccessory, {});
-    this.historyService.linkToEveHome(HomeKitAccessory, this.airPressureService, {});
+    this.historyService.linkToEveHome(HomeKitAccessory, this.airPressureService, {debug: this.nestObject.config.debug.includes("HISTORY")});
 
     this.updateHomeKit(HomeKitAccessory, deviceData);  // Do initial HomeKit update
-    console.log("Created Nest virtual weather station on '%s' updating every '%s' seconds", HomeKitAccessory.username, (WEATHERSTATIONREFRESH / 1000));
+    console.log("Setup Nest virtual weather station '%s' on '%s'", thisServiceName, HomeKitAccessory.username);
 }
 
 WeatherClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData) {
@@ -1896,7 +1900,7 @@ WeatherClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData) {
             this.TemperatureService.updateCharacteristic(Characteristic.SunsetTime, new Date(response.data.now.sunset * 1000).toLocaleTimeString());
 
             // Record history
-            this.historyService.addHistory(this.airPressureService, {time: Math.floor(new Date() / 1000), temperature: response.data.now.current_temperature, humidity: response.data.now.current_humidit, pressure: 0}, 300);
+            this.historyService.addHistory(this.airPressureService, {time: Math.floor(new Date() / 1000), temperature: response.data.now.current_temperature, humidity: response.data.now.current_humidity, pressure: 0}, 300);
         } else {
             this.nestObject.config.includes(Debugging.WEATHER) && console.debug("[WEATHER] Failed to get Nest weather data for '%s' using '%s/%s", deviceData.location, deviceData.latitude, deviceData.longitude);
         }
@@ -2501,6 +2505,7 @@ NestClass.prototype.__processNestData = function(nestData) {
             this.nestDevices[serial_number].device_type = "weather";
             this.nestDevices[serial_number].mac_address = tempMACAddress;
             this.nestDevices[serial_number].nest_device_structure = "structure." + deviceID;
+            this.nestDevices[serial_number].description = "";
             this.nestDevices[serial_number].location = structure.location;
             this.nestDevices[serial_number].serial_number = serial_number;
             this.nestDevices[serial_number].postal_code = structure.postal_code;
@@ -2509,6 +2514,11 @@ NestClass.prototype.__processNestData = function(nestData) {
             this.nestDevices[serial_number].state = structure.state;
             this.nestDevices[serial_number].latitude = structure.latitude;
             this.nestDevices[serial_number].longitude = structure.longitude;
+
+            // Insert any extra options we've read in from configuration file for this device
+            this.extraOptions[serial_number] && Object.entries(this.extraOptions[serial_number]).forEach(([key, value]) => {
+                this.nestDevices[serial_number][key] = value;
+            });
         });
     }
 }
@@ -2856,7 +2866,7 @@ function processDeviceforHomeKit(nestObjectClass, deviceData, action) {
     if (action == "add" && typeof deviceData == "object") {
         // adding device into HomeKit
         // Generate some common things
-        var tempName = (deviceData.description == "" ? deviceData.location : deviceData.location + " - " + deviceData.description);    // Need to generate valid HomeKit name
+        var tempName = __makeValidHomeKitName((deviceData.description == "" ? deviceData.location : deviceData.location + " - " + deviceData.description));    // Need to generate valid HomeKit name
         var tempModel = "";
 
         switch (deviceData.device_type) {
