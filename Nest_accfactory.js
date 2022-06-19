@@ -14,7 +14,6 @@
 // -- 2FA due to Nest changes end of May 2020??
 // -- add Nest home name to pairing names (easier for mutiple homes)??
 // -- Locks??
-// -- weather accessory using nest weather data API???
 //
 // -- Nest Hello/Cam(s)
 //      -- Subscribe to events rather than polling??? firebase cloud messaging??
@@ -33,6 +32,9 @@
 //      -- Add replacement date as custom HomeKit characteristic??
 //      -- Motion history in Eve App
 //      -- Pathway light as a light service? No sure can get info
+//
+// -- Nest "Weather"
+//      -- If latitude/longitude not in Nest data, try postal code/country code 
 //
 // done
 // -- Google account auth via refreshtoken method 
@@ -111,7 +113,7 @@
 //    Access token can be view by logging in to https//home.nest.com on webbrowser then in going to https://home.nest.com/session  Seems access token expires every 30days
 //    so needs manually updating (haven't seen it expire yet.....)
 //
-// Version 15/6/2022
+// Version 16/6/2022
 // Mark Hulskamp
 
 module.exports = accessories = [];
@@ -455,7 +457,6 @@ function WeatherClass() {
     this.airPressureService = null;
     this.TemperatureService = null;
     this.HumidityService = null;
-    this.refreshTimer = null;
     this.historyService = null;                 // History logging service
 }
 
@@ -1882,7 +1883,7 @@ WeatherClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData) {
     this.BatteryService.updateCharacteristic(Characteristic.BatteryLevel, 100); // Always %100
     this.BatteryService.updateCharacteristic(Characteristic.StatusLowBattery, Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL);
 
-    axios.get("https://home.nest.com/api/0.1/weather/forecast/" + deviceData.latitude + "," + deviceData.longitude, {timeout: 10000})
+    axios.get("https://home.nest.com/api/0.1/weather/forecast/" + deviceData.latitude + "," + deviceData.longitude, {headers: {"user-agent": USERAGENT, timeout: 10000}})
     .then(response => {
         if (response.status == 200) {
             this.TemperatureService.updateCharacteristic(Characteristic.CurrentTemperature, response.data.now.current_temperature);
@@ -1900,10 +1901,17 @@ WeatherClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData) {
             this.TemperatureService.updateCharacteristic(Characteristic.SunsetTime, new Date(response.data.now.sunset * 1000).toLocaleTimeString());
 
             // Record history
-            this.historyService.addHistory(this.airPressureService, {time: Math.floor(new Date() / 1000), temperature: response.data.now.current_temperature, humidity: response.data.now.current_humidity, pressure: 0}, 300);
+            if (this.historyService != null) {
+                var tempEntry = this.historyService.lastHistory(this.airPressureService);
+                if (tempEntry == null || (typeof tempEntry == "object" && tempEntry.temperature != response.data.now.current_temperature || tempEntry.humidity != response.data.now.current_humidity)) {
+                    this.historyService.addHistory(this.airPressureService, {time: Math.floor(new Date() / 1000), temperature: response.data.now.current_temperature, humidity: response.data.now.current_humidity, pressure: 0}, 300);
+                }
+            }
         } else {
             this.nestObject.config.includes(Debugging.WEATHER) && console.debug("[WEATHER] Failed to get Nest weather data for '%s' using '%s/%s", deviceData.location, deviceData.latitude, deviceData.longitude);
         }
+    })
+    .catch(error => {
     });
 }
 

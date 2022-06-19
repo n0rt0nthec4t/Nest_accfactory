@@ -486,20 +486,34 @@ NexusStreamer.prototype.__connect = function(host) {
         });
 
         this.socket.on("close", (hadError) => {
-            this.playingBack = false;   // Playback ended as socket is closed
+            var reconnect = false;
             clearInterval(this.pingtimer);    // Clear ping timer
             if (hadError == true && (this.buffer.active == true || this.buffer.streams.length > 0)) {
                 // We had a socket error, but still have either active buffering occuring or output streams running
                 // so attempt to restart connection to existing host
                 this.debug && console.debug("[NEXUS] Connection closed to '%s' with error. Attempting reconnection", host);
+                reconnect = true;
+            }
+            if (hadError == false && this.playingBack == false) {
+                // Socket appears to have closed normally ie: we've probably done that
+                this.debug && console.debug("[NEXUS] Connection closed to '%s'", host);
+            }
+            if (hadError == false && this.playingBack == true && (this.buffer.active == true || this.buffer.streams.length > 0)) {
+                // No error, but the conenction closed without gracefully ending playback.
+                // We still have either active buffering occuring or output streams running
+                // so attempt to restart connection to existing host
+                this.debug && console.debug("[NEXUS] Connection closed to '%s'. Attempting reconnection", host);
+                reconnect = true;
+            }
+
+            this.playingBack = false;   // Playback ended as socket is closed
+
+            if (reconnect == true) {
+                // Restart connection
                 this.socket = null; // Clear socket object 
                 this.sessionID = null;  // Not an active session anymore
                 this.__connect(host);
                 this.__startNexusData();
-            }
-            if (hadError == false) {
-                // Socket appears to have closed normally ie: we've probably done that
-                this.debug && console.debug("[NEXUS] Connection closed to '%s'", host);
             }
         });
     }
@@ -674,11 +688,11 @@ NexusStreamer.prototype.__Authenticate = function(reauthorise) {
     }
     if (typeof reauthorise == "boolean" && reauthorise == true) {
         // Request to re-authorise only
-        this.debug && console.debug("[NEXUS] Re-authentication to '%s'", this.host);
+        this.debug && console.debug("[NEXUS] Re-authentication requested to '%s'", this.host);
         this.__sendMessage(PacketType.AUTHORIZE_REQUEST, tokenBuffer.finish());
     } else {
         // This isnt a re-authorise request, so perform "Hello" packet
-        this.debug && console.debug("[NEXUS] Performing authentication on '%s'", this.host);
+        this.debug && console.debug("[NEXUS] Performing authentication to '%s'", this.host);
         helloBuffer.writeVarintField(1, ProtocolVersion.VERSION_3);
         helloBuffer.writeStringField(2, this.camera.camera_uuid);
         helloBuffer.writeBooleanField(3, false);
