@@ -82,6 +82,7 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                            |
 |------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| v0.0.4           | Minor code fixes                                                                                                                   |
 | v0.0.3           | Improvements to maintaining network connection for HKSV buffering                                                                  |
 |                  | New option to have a "virtual" weather station using Nest weather data. Enabled in configuration                                   |
 | v0.0.1           | Initial release to this repository                                                                                                 |
