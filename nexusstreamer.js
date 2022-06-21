@@ -194,6 +194,14 @@ const AACMONO48000BLANK = Buffer.from([
 	0xFC, 0x01, 0x18, 0x20, 0x07
 ]);
 
+// General functions
+function getTimestamp () {
+    const pad = (n,s=2) => (`${new Array(s).fill(0)}${n}`).slice(-s);
+    const d = new Date();
+    
+    return `${pad(d.getFullYear(),4)}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 
 // NeuxsStreamer object
 class NexusStreamer {
@@ -268,7 +276,7 @@ NexusStreamer.prototype.startBuffering = function(milliseconds) {
         this.__connect(this.camera.direct_nexustalk_host);
         this.__startNexusData();   // start processing data
     }
-    this.debug && console.debug("[NEXUS] Started buffering from '%s' with size of '%s'", this.host, milliseconds);
+    this.debug && console.debug(getTimestamp() + " [NEXUS] Started buffering from '%s' with size of '%s'", this.host, milliseconds);
 }
 
 NexusStreamer.prototype.startLiveStream = function(sessionID, videoStream, audioStream, talkbackStream, alignToSPSFrame) {
@@ -282,7 +290,7 @@ NexusStreamer.prototype.startLiveStream = function(sessionID, videoStream, audio
 
     if (this.buffer.active == false && this.socket == null) {
         // We not doing any buffering and there isnt an active socket connection, so startup connection to nexus
-        this.debug && console.debug("[NEXUS Starting connection to '%s'", this.camera.direct_nexustalk_host);
+        this.debug && console.debug(getTimestamp() + " [NEXUS Starting connection to '%s'", this.camera.direct_nexustalk_host);
         this.__connect(this.camera.direct_nexustalk_host);
         this.__startNexusData();
     }
@@ -308,7 +316,7 @@ NexusStreamer.prototype.startLiveStream = function(sessionID, videoStream, audio
     }
 
     // finally, we've started live stream
-    this.debug && console.debug("[NEXUS] Started live stream from '%s'", this.host);
+    this.debug && console.debug(getTimestamp() + " [NEXUS] Started live stream from '%s'", this.host);
 }
 
 NexusStreamer.prototype.startRecordStream = function(sessionID, ffmpegRecord, videoStream, audioStream, alignToSPSFrame) {
@@ -322,7 +330,7 @@ NexusStreamer.prototype.startRecordStream = function(sessionID, ffmpegRecord, vi
 
     if (this.buffer.active == false && this.socket == null) {
         // We not doing any buffering and/or there isnt an active socket connection, so startup connection to nexus
-        this.debug && console.debug("[NEXUS Starting connection to '%s''", this.camera.direct_nexustalk_host);
+        this.debug && console.debug(getTimestamp() + " [NEXUS Starting connection to '%s''", this.camera.direct_nexustalk_host);
         this.__connect(this.camera.direct_nexustalk_host);
         this.__startNexusData();
     }
@@ -332,7 +340,7 @@ NexusStreamer.prototype.startRecordStream = function(sessionID, ffmpegRecord, vi
     this.buffer.streams.push({type: "record", id: sessionID, record: ffmpegRecord, video: videoStream, audio: audioStream, empty: true, aligned: (typeof alignToSPSFrame == "undefined" || alignToSPSFrame == true ? false : true), prebuffer: true});
 
     // Finally we've started the recording stream
-    this.debug && console.debug("[NEXUS] Started recording stream from '%s'", this.host);
+    this.debug && console.debug(getTimestamp() + " [NEXUS] Started recording stream from '%s'", this.host);
 }
 
 NexusStreamer.prototype.stopRecordStream = function(sessionID) {
@@ -369,7 +377,7 @@ NexusStreamer.prototype.stopLiveStream = function(sessionID) {
 NexusStreamer.prototype.stopBuffering = function() {
     if (this.buffer.active == true) {
         // we have a buffer session, so close it down
-        this.debug && console.debug("[NEXUS] Stopped buffering from '%s'", this.host);
+        this.debug && console.debug(getTimestamp() + " [NEXUS] Stopped buffering from '%s'", this.host);
         this.buffer.buffer = null;  // Clean up first
         this.buffer.active = false;    // No buffer running now
     }
@@ -465,7 +473,7 @@ NexusStreamer.prototype.__connect = function(host) {
         this.socket = tls.connect({host: host, port: 1443}, () => {
             // Opened connection to Nexus server, so now need to authenticate ourselves
             this.host = host;   // update internal host name since we've connected
-            this.debug && console.debug("[NEXUS] Connection establised to '%s' with session ID '%s'", host, this.sessionID);
+            this.debug && console.debug(getTimestamp() + " [NEXUS] Connection establised to '%s' with session ID '%s'", host, this.sessionID);
             this.socket.setKeepAlive(true); // Keep socket connection alive
             this.__Authenticate(false);
 
@@ -491,18 +499,18 @@ NexusStreamer.prototype.__connect = function(host) {
             if (hadError == true && (this.buffer.active == true || this.buffer.streams.length > 0)) {
                 // We had a socket error, but still have either active buffering occuring or output streams running
                 // so attempt to restart connection to existing host
-                this.debug && console.debug("[NEXUS] Connection closed to '%s' with error. Attempting reconnection", host);
+                this.debug && console.debug(getTimestamp() + " [NEXUS] Connection closed to '%s' with error. Attempting reconnection", host);
                 reconnect = true;
             }
             if (hadError == false && this.playingBack == false) {
                 // Socket appears to have closed normally ie: we've probably done that
-                this.debug && console.debug("[NEXUS] Connection closed to '%s'", host);
+                this.debug && console.debug(getTimestamp() + " [NEXUS] Connection closed to '%s'", host);
             }
             if (hadError == false && this.playingBack == true && (this.buffer.active == true || this.buffer.streams.length > 0)) {
                 // No error, but the conenction closed without gracefully ending playback.
                 // We still have either active buffering occuring or output streams running
                 // so attempt to restart connection to existing host
-                this.debug && console.debug("[NEXUS] Connection closed to '%s'. Attempting reconnection", host);
+                this.debug && console.debug(getTimestamp() + " [NEXUS] Connection closed to '%s'. Attempting reconnection", host);
                 reconnect = true;
             }
 
@@ -618,7 +626,7 @@ NexusStreamer.prototype.__ffmpegRouter = function(type, data) {
                     }
                 }
             }
-            this.debug && console.debug("[NEXUS] Recording stream '%s' requested buffered data first. Sent '%s' buffered elements", this.buffer.streams[streamsIndex].id, bufferIndex);
+            this.debug && console.debug(getTimestamp() + " [NEXUS] Recording stream '%s' requested buffered data first. Sent '%s' buffered elements", this.buffer.streams[streamsIndex].id, bufferIndex);
         }
 
         // Now output the current data to the stream, either a "live" or "recording" stream
@@ -688,11 +696,11 @@ NexusStreamer.prototype.__Authenticate = function(reauthorise) {
     }
     if (typeof reauthorise == "boolean" && reauthorise == true) {
         // Request to re-authorise only
-        this.debug && console.debug("[NEXUS] Re-authentication requested to '%s'", this.host);
+        this.debug && console.debug(getTimestamp() + " [NEXUS] Re-authentication requested to '%s'", this.host);
         this.__sendMessage(PacketType.AUTHORIZE_REQUEST, tokenBuffer.finish());
     } else {
         // This isnt a re-authorise request, so perform "Hello" packet
-        this.debug && console.debug("[NEXUS] Performing authentication to '%s'", this.host);
+        this.debug && console.debug(getTimestamp() + " [NEXUS] Performing authentication to '%s'", this.host);
         helloBuffer.writeVarintField(1, ProtocolVersion.VERSION_3);
         helloBuffer.writeStringField(2, this.camera.camera_uuid);
         helloBuffer.writeBooleanField(3, false);
@@ -746,7 +754,7 @@ NexusStreamer.prototype.__handleRedirect = function(payload) {
 
 NexusStreamer.prototype.__handlePlaybackBegin = function(payload) {
     // Decode playback begin packet
-    this.debug && console.debug("[NEXUS] Playback started from '%s'", this.host);
+    this.debug && console.debug(getTimestamp() + " [NEXUS] Playback started from '%s'", this.host);
     var packet = payload.readFields(function(tag, obj, protoBuf) {
         if (tag === 1) obj.session_id = protoBuf.readVarint();
         else if (tag === 2) obj.channels.push(protoBuf.readFields(function(tag, obj, protoBuf) {
@@ -822,14 +830,14 @@ NexusStreamer.prototype.__handlePlaybackEnd = function(payload) {
     switch (packet.reason) {
         case 0 : {
             // Normal playback ended ie: when we stop playback
-            this.debug && console.debug("[NEXUS] Playback ended on '%s'", this.host);
+            this.debug && console.debug(getTimestamp() + " [NEXUS] Playback ended on '%s'", this.host);
             break;
         }
 
         case Reason.ERROR_TRANSCODE_NOT_AVAILABLE : 
         case Reason.PLAY_END_SESSION_COMPLETE : {
             // Lets restart playback
-            this.debug && console.debug("[NEXUS] Playback ended on '%s'. We'll attempt to restart", this.host, packet.reason);
+            this.debug && console.debug(getTimestamp() + " [NEXUS] Playback ended on '%s'. We'll attempt to restart", this.host, packet.reason);
             this.__connect();   // Re-connect to existing host
             this.__startNexusData();    // Restart processing Nexus data
             break;
@@ -837,7 +845,7 @@ NexusStreamer.prototype.__handlePlaybackEnd = function(payload) {
 
         default : {
             // Another kind of error.
-            this.debug && console.debug("[NEXUS] Playback ended on with error '%s'", this.host, packet.reason);
+            this.debug && console.debug(getTimestamp() + " [NEXUS] Playback ended on with error '%s'", this.host, packet.reason);
             break;
         }
     }
@@ -856,7 +864,7 @@ NexusStreamer.prototype.__handleNexusError = function(payload) {
         this.__Authenticate(true);    // Update authorisation only
     } else {
         // NexusStreamer Error, packet.message contains the message
-        this.debug && console.debug("[NEXUS] Error", packet.message);
+        this.debug && console.debug(getTimestamp() + " [NEXUS] Error", packet.message);
     }
 }
 

@@ -1,7 +1,7 @@
 {
     "name": "nest_accfactory",
     "description": "HomeKit integration for Nest devices based on HAP-NodeJS library",
-    "version": "0.0.3",
+    "version": "0.0.5",
     "main": "Nest_accfactory.js",
     "repository": {
       "type": "git",
