@@ -59,6 +59,7 @@ The options available are within the configuration file are listed below. Some o
 |------------------|-------------------------|-------------------------------------------------------------------------------------------|--------------|
 | RefreshToken     |                         | Google account refresh token                                                              | global       |
 | SessionToken     |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
+| EveApp           | true, false             | Integration with Evehome App. Default is true                                             | global/local |
 | Weather          | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
 | Debug            | true, false             | Turns debugging on or off. Default is off                                                 | global       |
 | mDNS             | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is ciao                                           | global       |
