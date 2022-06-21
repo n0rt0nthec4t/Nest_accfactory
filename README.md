@@ -83,6 +83,9 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                            |
 |------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| v0.0.5           | New option to enabled/disable integration with Eve App in configuration                                                            |
+|                  | Timestamps in debugging logs                                                                                                       | 
+|                  | Minor code fixes                                                                                                                   |
 | v0.0.4           | Minor code fixes                                                                                                                   |
 | v0.0.3           | Improvements to maintaining network connection for HKSV buffering                                                                  |
 |                  | New option to have a "virtual" weather station using Nest weather data. Enabled in configuration                                   |
