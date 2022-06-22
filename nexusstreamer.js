@@ -347,7 +347,7 @@ NexusStreamer.prototype.stopRecordStream = function(sessionID) {
     // Request to stop a recording stream
     var index = this.buffer.streams.findIndex(({ type, id }) => type == "record" && id == sessionID);
     if (index != -1) {
-        this.debug && console.log("[NEUXS] Stopped recording stream from '%s'", this.host);
+        this.debug && console.debug(getTimestamp() + " [NEXUS] Stopped recording stream from '%s'", this.host);
         this.buffer.streams.splice(index, 1);   // remove this object
     }
 
@@ -362,7 +362,7 @@ NexusStreamer.prototype.stopLiveStream = function(sessionID) {
     // Request to stop an active live stream
     var index = this.buffer.streams.findIndex(({ type, id }) => type == "live" && id == sessionID);
     if (index != -1) {
-        this.debug && console.log("[NEUXS] Stopped live stream from '%s'", this.host);
+        this.debug && console.debug(getTimestamp() + " [NEXUS]  Stopped live stream from '%s'", this.host);
         this.buffer.streams[index].timeout && clearTimeout(this.buffer.streams[index].timeout); // Clear any active return audio timer
         this.buffer.streams.splice(index, 1);   // remove this object
     }
@@ -741,7 +741,7 @@ NexusStreamer.prototype.__handleRedirect = function(payload) {
     }
 
     if (redirectToHost != "") {
-        this.debug && console.log("[NEXUS] Redirect requested from '%s' to '%s'", this.host, redirectToHost);
+        this.debug && console.debug(getTimestamp() + " [NEXUS] Redirect requested from '%s' to '%s'", this.host, redirectToHost);
 
         // Setup listener for socket close event. Once socket is closed, we'll perform the redirect
         this.socket && this.socket.on("close", (hasError) => {
