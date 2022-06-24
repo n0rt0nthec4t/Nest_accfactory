@@ -219,6 +219,9 @@ class NexusStreamer {
         this.timer = null;  // Internal timer handle
         this.pingtimer = null;  // Ping timer handle
         this.sessionID = null;  // no session ID yet.. We'll assign a random one when we connect to the nexus stream
+        this.deviceID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".replace(/x/g, () => {
+            return Math.floor(Math.random() * 16).toString(16).toUpperCase();
+        }); // Random UUID v4 device ID. We do this once during creation of the object only
 
         this.host = cameraData.direct_nexustalk_host;  // Inital host to connect to
 
@@ -290,7 +293,7 @@ NexusStreamer.prototype.startLiveStream = function(sessionID, videoStream, audio
 
     if (this.buffer.active == false && this.socket == null) {
         // We not doing any buffering and there isnt an active socket connection, so startup connection to nexus
-        this.debug && console.debug(getTimestamp() + " [NEXUS Starting connection to '%s'", this.camera.direct_nexustalk_host);
+        this.debug && console.debug(getTimestamp() + " [NEXUS] Starting connection to '%s'", this.camera.direct_nexustalk_host);
         this.__connect(this.camera.direct_nexustalk_host);
         this.__startNexusData();
     }
@@ -330,7 +333,7 @@ NexusStreamer.prototype.startRecordStream = function(sessionID, ffmpegRecord, vi
 
     if (this.buffer.active == false && this.socket == null) {
         // We not doing any buffering and/or there isnt an active socket connection, so startup connection to nexus
-        this.debug && console.debug(getTimestamp() + " [NEXUS Starting connection to '%s''", this.camera.direct_nexustalk_host);
+        this.debug && console.debug(getTimestamp() + " [NEXUS] Starting connection to '%s''", this.camera.direct_nexustalk_host);
         this.__connect(this.camera.direct_nexustalk_host);
         this.__startNexusData();
     }
@@ -362,7 +365,7 @@ NexusStreamer.prototype.stopLiveStream = function(sessionID) {
     // Request to stop an active live stream
     var index = this.buffer.streams.findIndex(({ type, id }) => type == "live" && id == sessionID);
     if (index != -1) {
-        this.debug && console.debug(getTimestamp() + " [NEXUS]  Stopped live stream from '%s'", this.host);
+        this.debug && console.debug(getTimestamp() + " [NEXUS] Stopped live stream from '%s'", this.host);
         this.buffer.streams[index].timeout && clearTimeout(this.buffer.streams[index].timeout); // Clear any active return audio timer
         this.buffer.streams.splice(index, 1);   // remove this object
     }
@@ -515,11 +518,11 @@ NexusStreamer.prototype.__connect = function(host) {
             }
 
             this.playingBack = false;   // Playback ended as socket is closed
+            this.socket = null; // Clear socket object 
+            this.sessionID = null;  // Not an active session anymore
 
             if (reconnect == true) {
                 // Restart connection
-                this.socket = null; // Clear socket object 
-                this.sessionID = null;  // Not an active session anymore
                 this.__connect(host);
                 this.__startNexusData();
             }
@@ -544,6 +547,12 @@ NexusStreamer.prototype.__connect = function(host) {
             // Not sure worth enabling, but its here!
             //this.__ffmpegRouter("video", this.camera_connecting_h264_frame);
             //this.__ffmpegRouter("audio", AACMONO48000BLANK);
+        }
+        if (this.camera_offline_h264_frame && this.socket == null) {
+            // Seems we cant access the video stream as we have an empty connection, so feed in our custom h264 frame for playback
+            // We'll use the camera off h264 frame
+            this.__ffmpegRouter("video", this.camera_offline_h264_frame);
+            this.__ffmpegRouter("audio", AACMONO48000BLANK);
         }
     }, (TIMERINTERVAL / 30));   // output at 30 fps?
 }
@@ -703,8 +712,8 @@ NexusStreamer.prototype.__Authenticate = function(reauthorise) {
         this.debug && console.debug(getTimestamp() + " [NEXUS] Performing authentication to '%s'", this.host);
         helloBuffer.writeVarintField(1, ProtocolVersion.VERSION_3);
         helloBuffer.writeStringField(2, this.camera.camera_uuid);
-        helloBuffer.writeBooleanField(3, false);
-        helloBuffer.writeStringField(6, this.camera.serial_number);
+        helloBuffer.writeBooleanField(3, false);    // Doesnt required a connect camera
+        helloBuffer.writeStringField(6, this.deviceID); // Random UUID v4 device ID
         helloBuffer.writeStringField(7, USERAGENT);
         helloBuffer.writeVarintField(9, ClientType.IOS);
         this.__sendMessage(PacketType.HELLO, helloBuffer.finish());
@@ -868,6 +877,32 @@ NexusStreamer.prototype.__handleNexusError = function(payload) {
     }
 }
 
+NexusStreamer.prototype.__handleTalkbackBegin = function(payload) {
+    // Decode talk begin packet
+    var packet = payload.readFields(function(tag, obj, protoBuf) {
+        if (tag === 1) obj.user_id = protoBuf.readString();
+        else if (tag === 2) obj.session_id = protoBuf.readVarint();
+        else if (tag === 3) obj.quick_action_id = protoBuf.readVarint();
+        else if (tag === 4) obj.device_id = protoBuf.readString();
+    }, {user_id: "", session_id: 0, quick_action_id: 0, device_id: ""});
+
+    this.debug && console.debug(getTimestamp() + " [NEXUS] Talkback started on '%s'", packet.device_id);
+    this.talking = true;    // Talk back has started
+}
+
+NexusStreamer.prototype.__handleTalkbackEnd = function(payload) {
+    // Decode talk end packet
+    var packet = payload.readFields(function(tag, obj, protoBuf) {
+        if (tag === 1) obj.user_id = protoBuf.readString();
+        else if (tag === 2) obj.session_id = protoBuf.readVarint();
+        else if (tag === 3) obj.quick_action_id = protoBuf.readVarint();
+        else if (tag === 4) obj.device_id = protoBuf.readString();
+    }, {user_id: "", session_id: 0, quick_action_id: 0, device_id: ""});
+
+    this.debug && console.debug(getTimestamp() + " [NEXUS] Talkback ended on '%s'", packet.device_id);
+    this.talking = false;    // Talk back has stopped
+}
+
 NexusStreamer.prototype.__handleNexusData = function(data) {
     // Process the rawdata from our socket connection and convert into nexus packets to take action against
     this.pendingBuffer = (this.pendingBuffer == null ? data : Buffer.concat([this.pendingBuffer, data]));
@@ -920,12 +955,12 @@ NexusStreamer.prototype.__handleNexusData = function(data) {
                 }
 
                 case PacketType.TALKBACK_BEGIN : {
-                    this.talking = true;
+                    this.__handleTalkbackBegin(payload);
                     break;
                 }
 
                 case PacketType.TALKBACK_END : {
-                    this.talking = true;
+                    this.__handleTalkbackEnd(payload);
                     break;
                 }
 

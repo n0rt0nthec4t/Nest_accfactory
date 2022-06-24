@@ -255,7 +255,12 @@ class NestClass extends EventEmitter {
         // Load configuration
         
         if (fs.existsSync(configFile) == true) {
-            var config = JSON.parse(fs.readFileSync(configFile));
+            try {
+                var config = JSON.parse(fs.readFileSync(configFile));
+            } catch (error) {
+                // Error loading JSON, means config invalid
+                console.log("Error in JSON file '%s'", configFile);
+            }
 
             config && Object.entries(config).forEach(([key, value]) => {
                 // Process configuration items
@@ -283,7 +288,7 @@ class NestClass extends EventEmitter {
                 }
                 if (key == "H264ENCODER" && typeof value == "string") {
                     if (value.toUpperCase() == "LIBX264") this.config.H264Encoder = VideoCodecs.LIBX264;  // Use libx264, software encoder
-                    if (value.toUpperCase() == "H264_OMX") this.config.H264Encoder =  VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
+                    if (value.toUpperCase() == "H264_OMX") this.config.H264Encoder = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
                 }
                 if (key == "HKSVPREBUFFER" && typeof value == "number") {
                     if (value < 1000) value = value * 1000;  // If less 1000, assume seconds value passed in, so convert to milliseconds
@@ -308,7 +313,11 @@ class NestClass extends EventEmitter {
                     Object.entries(value).forEach(([subKey, value]) => {
                         if (subKey.toUpperCase() == "EXCLUDE" && typeof value == "boolean" && value == true) this.excludedDevices.push(key);    // Push this devices serial number onto our list
                         if (subKey.toUpperCase() == "HKSV" && typeof value == "boolean") this.extraOptions[key]["HKSV"] = value;    // HomeKit Secure Video for this device?
-                        if (subKey.toUpperCase() == "EVEAPP" && typeof value == "boolean") this.extraOptions[key]["EveApp"] = value;    // Evehome app integration 
+                        if (subKey.toUpperCase() == "EVEAPP" && typeof value == "boolean") this.extraOptions[key]["EveApp"] = value;    // Evehome app integration
+                        if (subKey.toUpperCase() == "H264ENCODER" && typeof value == "string") {
+                            if (value.toUpperCase() == "LIBX264") this.extraOptions[key]["H264Encoder"] = VideoCodecs.LIBX264;  // Use libx264, software encoder
+                            if (value.toUpperCase() == "H264_OMX") this.extraOptions[key]["H264Encoder"] = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
+                        }
                         if (subKey.toUpperCase() == "HKSVPREBUFFER" && typeof value == "number") {
                             if (value < 1000) value = value * 1000;  // If less 1000, assume seconds value passed in, so convert to milliseconds
                             this.extraOptions[key]["HKSVPreBuffer"] = value;   // HKSV pre-buffer sizing for this device
@@ -1177,7 +1186,7 @@ CameraClass.prototype.handleRecordingStreamRequest = async function *(streamId) 
     if (this.MotionServices[0].service.getCharacteristic(Characteristic.MotionDetected).value == true) {
         // Audio if enabled on doorbell/camera && audio recording configured for HKSV 
         var includeAudio = (this.nestObject.nestDevices[this.deviceID].audio_enabled == true && this.controller.recordingManagement.recordingManagementService.getCharacteristic(Characteristic.RecordingAudioActive).value == Characteristic.RecordingAudioActive.ENABLE);
-        var recordCodec = this.nestObject.config.H264Encoder;    // Codec to use for H264 encoding
+        var recordCodec = this.nestObject.nestDevices[this.deviceID].H264Encoder;    // Codec to use for H264 encoding
    
         // Build our ffmpeg command string for the video stream
         var ffmpeg = "-hide_banner"
@@ -1436,7 +1445,7 @@ CameraClass.prototype.handleSnapshotRequest = async function(request, callback) 
                 }
                 if (image.length == 0) {
                     // Still empty image buffer, so try old method for a direct grab
-                    await axios.get(this.nestObject.nestDevices[this.deviceID].nexus_api_http_server_url + "/get_image?uuid=" + this.nestObject.nestDevices[this.deviceID].camera_uuid, {responseType: "arraybuffer", headers: {"user-agent": USERAGENT, "accept" : "*/*", [this.nestObject.cameraAPI.key] : this.nestObject.cameraAPI.value + this.nestObject.nestCameraToken}, timeout: NESTAPITIMEOUT/*, retry: 3, retryDelay: 2000 */})
+                    await axios.get(this.nestObject.nestDevices[this.deviceID].nexus_api_http_server_url + "/get_image?uuid=" + this.nestObject.nestDevices[this.deviceID].camera_uuid + "&cachebuster=" + Math.floor(new Date() / 1000), {responseType: "arraybuffer", headers: {"user-agent": USERAGENT, "accept" : "*/*", [this.nestObject.cameraAPI.key] : this.nestObject.cameraAPI.value + this.nestObject.nestCameraToken}, timeout: NESTAPITIMEOUT/*, retry: 3, retryDelay: 2000 */})
                     .then(response => {
                         if (response.status == 200) {
                             image = response.data;
@@ -1518,7 +1527,7 @@ CameraClass.prototype.handleStreamRequest = async function (request, callback) {
             delete this.pendingSessions[request.sessionID]; // remove this pending session information
 
             var includeAudio = (this.nestObject.nestDevices[this.deviceID].audio_enabled == true);
-            var streamCodec = this.nestObject.config.H264Encoder;    // Codec to use for H264 encoding
+            var streamCodec = this.nestObject.nestDevices[this.deviceID].H264Encoder;    // Codec to use for H264 encoding
 
             // Build our ffmpeg command string for the video stream
             var ffmpeg = "-hide_banner"
@@ -1609,7 +1618,7 @@ CameraClass.prototype.handleStreamRequest = async function (request, callback) {
                     if (payloadType == request.audio.pt) {
                         // Audio payload type from HomeKit should match our payload type for audio
                         if (message.length > 50) {
-                            // Only send on audio data if we have a longer audio packet. Helps filter background noise?
+                            // Only send on audio data if we have a longer audio packet. (not sure it makes any difference, as under iOS 15 packets are roughly same length)
                             this.ongoingSessions[request.sessionID].rtpSplitter.send(message, this.ongoingSessions[request.sessionID].audioTalkbackPort);
                         }
                     } else {
@@ -1629,6 +1638,7 @@ CameraClass.prototype.handleStreamRequest = async function (request, callback) {
                     + " -map 0:0"
                     + " -codec:a " + AudioCodecs.LIBSPEEX
                     + " -frames_per_packet 4"
+                    + " -vad 1" // testing to filter background noise?
                     + " -ac 1"
                     + " -ar " + request.audio.sample_rate + "k"
                     + " -f data pipe:1";
@@ -1676,17 +1686,16 @@ CameraClass.prototype.handleStreamRequest = async function (request, callback) {
         }
 
         case "stop" : {
-            this.NexusStreamer.stopLiveStream("HK" + request.sessionID);
-
             if (typeof this.ongoingSessions[request.sessionID] == "object") {
+                this.NexusStreamer.stopLiveStream("HK" + request.sessionID);
                 this.ongoingSessions[request.sessionID].rtpSplitter && this.ongoingSessions[request.sessionID].rtpSplitter.close();
                 this.ongoingSessions[request.sessionID].ffmpeg && this.ongoingSessions[request.sessionID].ffmpeg.forEach(ffmpeg => {
                     ffmpeg && ffmpeg.kill("SIGKILL"); // Kill this ffmpeg process
                 })
                 this.controller.forceStopStreamingSession(request.sessionID);
                 delete this.ongoingSessions[request.sessionID]; // this session has finished
+                this.nestObject.config.debug.includes(Debugging.NEST) && console.debug(getTimestamp() + " [NEST] Live stream stopped on '%s'", this.nestObject.nestDevices[this.deviceID].mac_address);
             }
-            this.nestObject.config.debug.includes(Debugging.NEST) && console.debug(getTimestamp() + " [NEST] Live stream stopped on '%s'", this.nestObject.nestDevices[this.deviceID].mac_address);
             callback();
             break;
         }
@@ -1893,6 +1902,11 @@ WeatherClass.prototype.updateHomeKit = function(HomeKitAccessory, deviceData) {
     axios.get("https://home.nest.com/api/0.1/weather/forecast/" + deviceData.latitude + "," + deviceData.longitude, {headers: {"user-agent": USERAGENT, timeout: 10000}})
     .then(response => {
         if (response.status == 200) {
+            // Testing
+            if (response.data.now.current_temperature  < 0 || response.data.now.current_temperature > 30) {
+                console.log("[TESTING] weather range")
+                console.log(response.data.now)
+            }
             if (response.data.now.current_temperature >= MINWEATHERTEMP && response.data.now.current_temperature <= MAXWEATHERTEMP) {
                 this.TemperatureService.updateCharacteristic(Characteristic.CurrentTemperature, response.data.now.current_temperature);
                 this.HumidityService.updateCharacteristic(Characteristic.CurrentRelativeHumidity, response.data.now.current_humidity);
@@ -2507,6 +2521,7 @@ NestClass.prototype.__processNestData = function(nestData) {
                 // Insert any extra options we've read in from configuration file for this device
                 this.nestDevices[camera.serial_number].EveApp = this.config.EveApp;    // Global config option for EveHome App integration. Gets overriden below for specific doorbell/camera
                 this.nestDevices[camera.serial_number].HKSV = this.config.HKSV;    // Global config option for HomeKit Secure Video. Gets overriden below for specific doorbell/camera
+                this.nestDevices[camera.serial_number].H264Encoder = this.config.H264Encoder; // Global config option for using H264Encoder. Gets overriden below for specific doorbell/camera
                 this.nestDevices[camera.serial_number].HKSVPreBuffer = this.config.HKSVPreBuffer;  // Global config option for HKSV pre buffering size. Gets overriden below for specific doorbell/camera
                 this.nestDevices[camera.serial_number].doorbellCooldown = this.config.doorbellCooldown; // Global default for doorbell press cooldown. Gets overriden below for specific doorbell/camera
                 this.nestDevices[camera.serial_number].motionCooldown = this.config.motionCooldown; // Global default for motion detected cooldown. Gets overriden below for specific doorbell/camera
@@ -3093,7 +3108,7 @@ function isFfmpegValid(validLibraries) {
     return isValid;
 }
 
-function getTimestamp () {
+function getTimestamp() {
     const pad = (n,s=2) => (`${new Array(s).fill(0)}${n}`).slice(-s);
     const d = new Date();
     
