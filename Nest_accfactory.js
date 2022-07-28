@@ -1550,7 +1550,7 @@ class CameraClass {
                 }
                 if (deviceData.capabilities.includes("irled") == true) {
                     // Set nightvision status in HomeKit
-                    this.controller.recordingManagement.operatingModeService.updateCharacteristic(Characteristic.NightVision, (deviceData.properties["irled.state"].toUpperCase() == "OFF" ? false : true));
+                    deviceData.properties && this.controller.recordingManagement.operatingModeService.updateCharacteristic(Characteristic.NightVision, (deviceData.properties["irled.state"].toUpperCase() == "OFF" ? false : true));
                 }
             }
 
@@ -2050,7 +2050,7 @@ class NestClass extends EventEmitter {
 
                         // Only get doorbell/camera activity zone details if HKSV isn't enabled
                         if (this.HKSV == false || (this.extraOptions[this.rawNestData.quartz[deviceID].serial_number.toUpperCase()] && this.extraOptions[this.rawNestData.quartz[deviceID].serial_number.toUpperCase()].HKSV == false)) {
-                            await axios.get(this.rawNestData.quartz[deviceID].nexus_api_nest_domain_host + "/cuepoint_category/" + deviceID, {headers: {"user-agent": USERAGENT, [this.cameraAPI.key] : this.cameraAPI.value + this.nestCameraToken}, responseType: "json", timeout: NESTAPITIMEOUT})
+                            await axios.get(this.rawNestData.quartz[deviceID].nexus_api_nest_domain_host + "/cuepoint_category/" + deviceID, {headers: {"user-agent": USERAGENT, [this.cameraAPI.key] : this.cameraAPI.value + this.nestCameraToken}, responseType: "json", timeout: NESTAPITIMEOUT, retry: 3, retryDelay: 1000})
                             .then(async (response)=> {
                                 if (response.status && response.status == 200) {
                                     // Insert activity zones into the nest structure
@@ -2064,11 +2064,8 @@ class NestClass extends EventEmitter {
                         }
 
                         // Always get doorbell/camera properties
-                        await axios.get(CAMERAAPIHOST + "/api/cameras.get_with_properties?uuid=" + deviceID, {headers: {"user-agent": USERAGENT, "Referer" : REFERER, [this.cameraAPI.key] : this.cameraAPI.value + this.nestCameraToken}, responseType: "json", timeout: NESTAPITIMEOUT})
+                        await axios.get(CAMERAAPIHOST + "/api/cameras.get_with_properties?uuid=" + deviceID, {headers: {"user-agent": USERAGENT, "Referer" : REFERER, [this.cameraAPI.key] : this.cameraAPI.value + this.nestCameraToken}, responseType: "json", timeout: NESTAPITIMEOUT, retry: 3, retryDelay: 1000})
                         .then((response) => {
-                            if (typeof response.data.items[0].properties == "undefined") {
-                                console.log("[TESTING]", response);
-                            }
                             if (response.status && response.status == 200) {
                                 // Insert extra camera properties. We need this information to use with HomeKit Secure Video
                                 this.rawNestData.quartz[deviceID].properties = response.data.items[0].properties;
@@ -2925,7 +2922,7 @@ function processDeviceforHomeKit(nestObjectClass, deviceData, action) {
                 tempAccessory.getService(Service.AccessoryInformation).setCharacteristic(Characteristic.SerialNumber, deviceData.serial_number);
                 tempAccessory.getService(Service.AccessoryInformation).setCharacteristic(Characteristic.FirmwareRevision, deviceData.software_version);
             
-                tempAccessory.__thisObject = new ThermostatClass(deviceData.serial_numbe); // Store the object
+                tempAccessory.__thisObject = new ThermostatClass(deviceData.serial_number); // Store the object
                 tempAccessory.__thisObject.deviceStructure = deviceData.nest_device_structure;
                 tempAccessory.__thisObject.nestObject = nestObjectClass;
                 tempAccessory.__thisObject.addThermostat(tempAccessory, tempName, 1, deviceData); 
@@ -2978,7 +2975,7 @@ function processDeviceforHomeKit(nestObjectClass, deviceData, action) {
                 tempAccessory.getService(Service.AccessoryInformation).setCharacteristic(Characteristic.SerialNumber, deviceData.serial_number);
                 tempAccessory.getService(Service.AccessoryInformation).setCharacteristic(Characteristic.FirmwareRevision, deviceData.software_version);
 
-                tempAccessory.__thisObject = new SmokeSensorClass(deviceData.serial_numbe); // Store the object
+                tempAccessory.__thisObject = new SmokeSensorClass(deviceData.serial_number); // Store the object
                 tempAccessory.__thisObject.deviceStructure = deviceData.nest_device_structure;
                 tempAccessory.__thisObject.nestObject = nestObjectClass;
                 tempAccessory.__thisObject.addSmokeCOSensor(tempAccessory, tempName, 1, deviceData); 
