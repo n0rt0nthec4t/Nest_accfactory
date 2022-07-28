@@ -85,6 +85,7 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                            |
 |------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| v0.0.7           | Minor code fixes                                                      |
 | v0.0.6           | H264Encoder option can also be specified for a specific doorbell/camera.                                                           |
 | v0.0.5           | New option to enabled/disable integration with Eve App in configuration                                                            |
 |                  | Timestamps in debugging logs                                                                                                       | 
