@@ -1,51 +1,52 @@
 {
-    "name": "nest_accfactory",
-    "description": "HomeKit integration for Nest devices based on HAP-NodeJS library",
-    "version": "0.0.5",
-    "main": "Nest_accfactory.js",
-    "repository": {
-      "type": "git",
-      "url": "https://github.com/n0rt0nthec4t/HAP-NodeJS-Accessories"
-    },
-    "keywords": [
-      "homekit",
-      "hksv",
-      "hap-nodejs",
-      "nest",
-      "doorbell",
-      "camera",
-      "thermostat",
-      "temperature",
-      "smoke",
-      "sensor"
-    ],
-    "author": "Mark Hulskamp",
-    "funding": [
-      {
-        "type": "paypal",
-        "url": "https://www.paypal.com/donate/?cmd=_donations&business=YF53YVW333VVY&item_name=HAP-NodeJS-Accessories&currency_code=AUD&source=url"
-      }
-    ],
-    "license": "ISC",
-    "bugs": {
-      "url": "https://github.com/n0rt0nthec4t/HAP-NodeJS-Accessories/issues"
-    },
-    "homepage": "https://github.com/n0rt0nthec4t/HAP-NodeJS-Accessories",
-    "files": [
-      "Nest_accfactory.js",
-      "nexusstreamer.js",
-      "HomeKitHistory.js",
-      "Nest_camera_off.jpg",
-      "Nest_camera_offline.jpg"
-    ],
-    "engines": {
-      "node": ">=15.4.0",
-      "hap-nodejs": ">=0.10.2"
-    },
-    "dependencies": {
-      "hap-nodejs": ">=0.10.3-beta",
-      "axios": ">=0.22.0",
-      "pbf": "^3.2.1",
-      "ffmpeg-for-homebridge" : "^0.1.0"
+  "name": "nest_accfactory",
+  "description": "HomeKit integration for Nest devices based on HAP-NodeJS library",
+  "version": "0.0.8",
+  "main": "Nest_accfactory.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/n0rt0nthec4t/HAP-NodeJS-Accessories"
+  },
+  "keywords": [
+    "homekit",
+    "hksv",
+    "hap-nodejs",
+    "nest",
+    "doorbell",
+    "camera",
+    "thermostat",
+    "temperature",
+    "smoke",
+    "sensor"
+  ],
+  "author": "Mark Hulskamp",
+  "funding": [
+    {
+      "type": "paypal",
+      "url": "https://www.paypal.com/donate/?cmd=_donations&business=YF53YVW333VVY&item_name=HAP-NodeJS-Accessories&currency_code=AUD&source=url"
+    }
+  ],
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/n0rt0nthec4t/HAP-NodeJS-Accessories/issues"
+  },
+  "homepage": "https://github.com/n0rt0nthec4t/HAP-NodeJS-Accessories",
+  "files": [
+    "Nest_accfactory.js",
+    "nexusstreamer.js",
+    "HomeKitHistory.js",
+    "Nest_camera_off.jpg",
+    "Nest_camera_offline.jpg",
+    "Nest_camera_connecting.jpg"
+  ],
+  "engines": {
+    "node": ">=15.4.0",
+    "hap-nodejs": ">=0.10.2"
+  },
+  "dependencies": {
+    "hap-nodejs": ">=0.10.3-beta",
+    "axios": ">=0.22.0",
+    "pbf": ">=3.2.1",
+    "ffmpeg-for-homebridge" : ">=0.1.0"
   }
 }
