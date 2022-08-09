@@ -75,7 +75,7 @@ The options available are within the configuration file are listed below. Some o
 | Exclude           | true, false             | Exclude a device                                                                          | local        |
 
 ## HomeKit Pairing
-Once configured and running, and non-excluded devices can be paired in HomeKit using tne pairing code **031-45-154**
+Once configured and running, any non-excluded devices can be paired in HomeKit using the pairing code **031-45-154**
 
 ## Docker Image
 
