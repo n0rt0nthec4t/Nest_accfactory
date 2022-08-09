@@ -74,7 +74,8 @@ The options available are within the configuration file are listed below. Some o
 | DoorbellCooldown  | seconds or milliseconds | Ignore doorbeel button pressed for this time once triggered Default is 1 minute           | global/local |
 | Exclude           | true, false             | Exclude a device                                                                          | local        |
 
-Once configured and running, the HomeKit pairing code is **031-45-154** for any exposed devices
+## HomeKit Pairing
+Once configured and running, and non-excluded devices can be paired in HomeKit using tne pairing code **031-45-154**
 
 ## Docker Image
 
