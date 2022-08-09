@@ -42,12 +42,13 @@ An advanced configuration example is below
 {
     "SessionToken" : "<nest session token>",
     "HKSV" : false,
-    "H264Encoder" : "copy",
     "SERIAL1" : {
         "Exclude" : true
     },
     "SERIAL2" : {
         "HKSV" : true,
+        "H264EncoderLive" : "libx264",
+        "H264EncoderRecord" : "libx264",
         "MotionCoolDown" : 2
     },
 }
@@ -55,21 +56,23 @@ An advanced configuration example is below
 
 The options available are within the configuration file are listed below. Some of these options can also be on specific devices only
 
-| Option           | Values                  | Description                                                                               | Global/Local |
-|------------------|-------------------------|-------------------------------------------------------------------------------------------|--------------|
-| RefreshToken     |                         | Google account refresh token                                                              | global       |
-| SessionToken     |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
-| EveApp           | true, false             | Integration with Evehome App. Default is true                                             | global/local |
-| Weather          | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
-| Debug            | true, false             | Turns debugging on or off. Default is off                                                 | global       |
-| mDNS             | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is bonjour                                        | global       |
-| HKSV             | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras. Default is off.           | global/local |
-| HKSVPreBuffer    | seconds or milliseconds | Amount of time the pre-buffer for HomeKit Secure Video holds data. Default is 15 seconds  | global/local |
-| H264Encoder      | copy, libx264, h264_omx | H264 encoder ffmpeg used for streaming and recording. Default is copy                     | global/local |
-| MotionCooldown   | seconds or milliseconds | Ignore motion detection for this time once triggered. Default is 1 minute                 | global/local |
-| PersonCooldown   | seconds or milliseconds | Ignore person detection for this time once triggered (Non HKSV only) Default is 2 minutes | global/local |
-| DoorbellCooldown | seconds or milliseconds | Ignore doorbeel button pressed for this time once triggered Default is 1 minute           | global/local |
-| Exclude          | true, false             | Exclude a device                                                                          | local        |
+| Option            | Values                  | Description                                                                               | Global/Local |
+|-------------------|-------------------------|-------------------------------------------------------------------------------------------|--------------|
+| RefreshToken      |                         | Google account refresh token                                                              | global       |
+| SessionToken      |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
+| EveApp            | true, false             | Integration with Evehome App. Default is true                                             | global/local |
+| Weather           | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
+| Debug             | true, false             | Turns debugging on or off. Default is off                                                 | global       |
+| mDNS              | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is bonjour                                        | global       |
+| HKSV              | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras. Default is off.           | global/local |
+| HKSVPreBuffer     | seconds or milliseconds | Amount of time the pre-buffer for HomeKit Secure Video holds data. Default is 15 seconds  | global/local |
+| H264Encoder       | copy, libx264, h264_omx | H264 encoder ffmpeg used for both live video and HKSV recording                           | global/local |
+| H264EncoderLive   | copy, libx264, h264_omx | H264 encoder ffmpeg used for live video. Default is copy                                  | global/local |
+| H264EncoderRecord | copy, libx264, h264_omx | H264 encoder ffmpeg used for HKSV recording. Default is libx264                           | global/local |
+| MotionCooldown    | seconds or milliseconds | Ignore motion detection for this time once triggered. Default is 1 minute                 | global/local |
+| PersonCooldown    | seconds or milliseconds | Ignore person detection for this time once triggered (Non HKSV only) Default is 2 minutes | global/local |
+| DoorbellCooldown  | seconds or milliseconds | Ignore doorbeel button pressed for this time once triggered Default is 1 minute           | global/local |
+| Exclude           | true, false             | Exclude a device                                                                          | local        |
 
 Once configured and running, the HomeKit pairing code is **031-45-154** for any exposed devices
 
@@ -85,7 +88,8 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                            |
 |------------------|------------------------------------------------------------------------------------------------------------------------------------|
-| v0.0.7           | Minor code fixes                                                      |
+| v0.0.8           | H264Encoder config option changes. Will use H264EncoderLive and H264EncoderRecord                                                  |
+| v0.0.7           | Minor code fixes                                                                                                                   |
 | v0.0.6           | H264Encoder option can also be specified for a specific doorbell/camera.                                                           |
 | v0.0.5           | New option to enabled/disable integration with Eve App in configuration                                                            |
 |                  | Timestamps in debugging logs                                                                                                       | 
