@@ -5,7 +5,7 @@
 // Cleaned up/recoded
 //
 // Mark Hulskamp
-// 1/7/2022
+// 2/8/2022
 //
 // done
 // -- switching camera stream on/off - going from off to on doesn't restart stream from Nest
@@ -19,6 +19,8 @@
 // -- fixes in buffering code. Will now correctly output requested buffer to multiple streams
 // -- refactor class definition
 // -- Changes to buffering timestamping
+// -- get snapshot image from buffer if active
+// -- re-connection fixes when playback has ended with error
 // 
 // todo
 // -- When camera goes offline, we don't get notified straight away and video stream stops. Perhaps timer to go to camera off image if no data receieve in past 15 seconds?
@@ -27,7 +29,6 @@
 // -- audio echo with return audio
 // -- speed up live image stream starting when have a buffer active. Should almost start straight away
 // -- dynamic audio switching on/off from camera
-// -- get snapshot image from buffer if active
 
 "use strict";
 
@@ -58,10 +59,11 @@ const CodecType = {
 };
 
 const StreamProfile = {
+    AVPROFILE_MOBILE_1 : 1,
+    AVPROFILE_HD_MAIN_1 : 2,
     AUDIO_AAC : 3,
     AUDIO_SPEEX : 4,
     AUDIO_OPUS : 5,
-    AUDIO_OPUS_LIVE : 13,
     VIDEO_H264_50KBIT_L12 : 6,
     VIDEO_H264_530KBIT_L31 : 7,
     VIDEO_H264_100KBIT_L30 : 8,
@@ -69,10 +71,9 @@ const StreamProfile = {
     VIDEO_H264_50KBIT_L12_THUMBNAIL : 10,
     META : 11,
     DIRECTORS_CUT : 12,
+    AUDIO_OPUS_LIVE : 13,
     VIDEO_H264_L31 : 14,
-    VIDEO_H264_L40 : 15,
-    AVPROFILE_MOBILE_1 : 1,
-    AVPROFILE_HD_MAIN_1 : 2,
+    VIDEO_H264_L40 : 15
 };
 
 const ErrorCode = {
@@ -208,6 +209,7 @@ class NexusStreamer {
         this.pendingMessages = [];
         this.pendingBuffer = null;
         this.authorised = false;
+        this.pendingHostChange = false;
         this.streamQuality = StreamProfile.VIDEO_H264_2MBIT_L40;    // Default streaming quaility
 
         this.timer = null;  // Internal timer handle
@@ -285,7 +287,7 @@ class NexusStreamer {
         if (this.buffer.active == false && this.socket == null) {
             // We not doing any buffering and there isnt an active socket connection, so startup connection to nexus
             this.debug && console.debug(getTimestamp() + " [NEXUS] Starting connection to '%s'", this.camera.direct_nexustalk_host);
-            this.#connect(this.camera.direct_nexustalk_host);;
+            this.#connect(this.camera.direct_nexustalk_host);
         }
         
         // Should have an active connection here now, so can add video/audio/talkback stream handles for our ffmpeg router to handle
@@ -323,7 +325,7 @@ class NexusStreamer {
 
         if (this.buffer.active == false && this.socket == null) {
             // We not doing any buffering and/or there isnt an active socket connection, so startup connection to nexus
-            this.debug && console.debug(getTimestamp() + " [NEXUS] Starting connection to '%s''", this.camera.direct_nexustalk_host);
+            this.debug && console.debug(getTimestamp() + " [NEXUS] Starting connection to '%s'", this.camera.direct_nexustalk_host);
             this.#connect(this.camera.direct_nexustalk_host);
         }
     
@@ -395,11 +397,16 @@ class NexusStreamer {
                 this.camera.online = cameraData.online;
                 this.camera.streaming_enabled = cameraData.streaming_enabled;
                 if ((this.camera.online == false || this.camera.streaming_enabled == false) && this.socket != null) {
+                    this.debug && console.debug(getTimestamp() + " [NEXUS] Camera went offline");
                     this.#close(true); // as offline or streaming not enabled, close socket
                 }
                 if ((this.camera.online == true && this.camera.streaming_enabled == true) && (this.socket == null && (this.buffer.active == true || this.buffer.streams.length > 0))) {
                     this.#connect(this.camera.direct_nexustalk_host);   // Connect to Nexus for stream
                 }
+            }
+
+            if (this.camera.direct_nexustalk_host != cameraData.direct_nexustalk_host) {
+                this.debug && console.debug(getTimestamp() + " [NEXUS] Updated Nexusstreamer host '%s'", cameraData.direct_nexustalk_host);
             }
 
             this.camera = cameraData;   // Update our internally stored copy of the camera details
@@ -439,23 +446,10 @@ class NexusStreamer {
         return image;
     }
 
-    status() {
-        // Returns what we're currenting doing ie:
-        // Buffering, recording, livestreaming, idle
-        var statusArray = [];
-        if (this.buffer.active == true) statusArray.push("buffering");
-        this.buffer.streams.forEach(stream => {
-            if (stream.type == "record") statusArray.push("recording");
-            if (stream.type == "live") statusArray.push("livestream");
-        });
-        if (statusArray.length == 0) statusArray.push("idle");
-        return statusArray;
-    }
-
     #connect(host) {
         clearInterval(this.pingtimer);  // Clear ping timer if was running
 
-        if (this.sessionID == null) this.sessionID = Math.floor(Math.random() * 100); // Random session ID
+        if (this.sessionID == null) this.sessionID = Math.floor(Math.random() * (100 - 1) + 1); // Random session ID bwteen 1 and 100
         if (this.camera.streaming_enabled == true && this.camera.online == true) {
 
             if (typeof host == "undefined") {
@@ -466,7 +460,7 @@ class NexusStreamer {
             this.socket = tls.connect({host: host, port: 1443}, () => {
                 // Opened connection to Nexus server, so now need to authenticate ourselves
                 this.host = host;   // update internal host name since we've connected
-                this.debug && console.debug(getTimestamp() + " [NEXUS] Connection establised to '%s' with session ID '%s'", host, this.sessionID);
+                this.debug && console.debug(getTimestamp() + " [NEXUS] Connection established to '%s'", host);
                 this.socket.setKeepAlive(true); // Keep socket connection alive
                 this.#Authenticate(false);
                 this.#startNexusData();   // start processing data
@@ -481,7 +475,11 @@ class NexusStreamer {
             this.socket.on("error", (error) => {
                 // Catch any socket errors to avoid code quitting
                 // Our "close" handler will try reconnecting if needed
-                //this.debug && console.debug(getTimestamp() + " [NEXUS] Stocket error", error);
+                this.debug && console.debug(getTimestamp() + " [NEXUS] Stocket error", error);
+            });
+
+            this.socket.on("end", (error) => {
+                this.debug && console.debug(getTimestamp() + " [NEXUS] Stocket ended");
             });
 
             this.socket.on("data", (data) => {
@@ -502,7 +500,7 @@ class NexusStreamer {
                     this.debug && console.debug(getTimestamp() + " [NEXUS] Connection closed to '%s'", host);
                 }
                 if (hadError == false && this.playingBack == true && (this.buffer.active == true || this.buffer.streams.length > 0)) {
-                    // No error, but the conenction closed without gracefully ending playback.
+                    // No error, but the connection closed without gracefully ending playback.
                     // We still have either active buffering occuring or output streams running
                     // so attempt to restart connection to existing host
                     this.debug && console.debug(getTimestamp() + " [NEXUS] Connection closed to '%s'. Attempting reconnection", host);
@@ -516,7 +514,8 @@ class NexusStreamer {
 
                 if (reconnect == true) {
                     // Restart connection
-                    this.#connect(this.camera.direct_nexustalk_host);  // Connect back to main host to start process again
+                    //this.#connect(this.camera.direct_nexustalk_host);  // Connect back to main host to start process again
+                    this.#connect(host);
                 }
             });
         }
@@ -558,7 +557,8 @@ class NexusStreamer {
                 stopBuffer.writeVarintField(1, this.sessionID); // session ID}
                 this.#sendMessage(PacketType.STOP_PLAYBACK, stopBuffer.finish());
             }
-            this.socket.end();
+            //this.socket.end();
+            this.socket.destroy();
         }
         this.socket = null;
         this.sessionID = null;  // Not an active session anymore
@@ -663,7 +663,7 @@ class NexusStreamer {
 
     #sendMessage(type, buffer) {
         if (this.socket != null) {
-            if ((this.socket.connecting == true || this.socket.encrypted == false) || (type !== PacketType.HELLO && this.authorised == false)) { 
+            if ((this.socket.readyState != "open") || (type !== PacketType.HELLO && this.authorised == false)) { 
                 this.pendingMessages.push({type, buffer});
                 return;
             }
@@ -713,9 +713,9 @@ class NexusStreamer {
             helloBuffer.writeStringField(2, this.camera.camera_uuid);
             helloBuffer.writeBooleanField(3, false);    // Doesnt required a connect camera
             helloBuffer.writeStringField(6, this.deviceID); // Random UUID v4 device ID
-            //helloBuffer.writeStringField(7, "Nest/5.67.0.6 (iOScom.nestlabs.jasper.release) os=15.4");
+            //helloBuffer.writeStringField(7, "Nest/5.69.0 (iOScom.nestlabs.jasper.release) os=15.6");
             //helloBuffer.writeVarintField(9, ClientType.IOS);
-            helloBuffer.writeStringField(7, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15");
+            helloBuffer.writeStringField(7, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6 Safari/605.1.15");
             helloBuffer.writeVarintField(9, ClientType.WEB);
             this.#sendMessage(PacketType.HELLO, helloBuffer.finish());
         }
@@ -763,7 +763,7 @@ class NexusStreamer {
 
     #handlePlaybackBegin(payload) {
         // Decode playback begin packet
-        this.debug && console.debug(getTimestamp() + " [NEXUS] Playback started from '%s'", this.host);
+        this.debug && console.debug(getTimestamp() + " [NEXUS] Playback started from '%s' with session ID '%s'", this.host, this.sessionID);
         var packet = payload.readFields(function(tag, obj, protoBuf) {
             if (tag === 1) obj.session_id = protoBuf.readVarint();
             else if (tag === 2) obj.channels.push(protoBuf.readFields(function(tag, obj, protoBuf) {
@@ -842,16 +842,18 @@ class NexusStreamer {
             // Normal playback ended ie: when we stopped playback
             this.debug && console.debug(getTimestamp() + " [NEXUS] Playback ended on '%s'", this.host);
         }
-        if (this.playingBack = true && (packet.reason == Reason.ERROR_TRANSCODE_NOT_AVAILABLE || packet.reason == Reason.PLAY_END_SESSION_COMPLETE)) {
+        
+        if (packet.reason != 0) {
             // Error during playback, so we'll attempt to restart by reconnection to host
             this.debug && console.debug(getTimestamp() + " [NEXUS] Playback ended on '%s' with error '%s'. Attempting reconnection", this.host, packet.reason);
-            
+
             // Setup listener for socket close event. Once socket is closed, we'll perform the re-connection
             this.socket && this.socket.on("close", (hasError) => {
-                this.#connect();   // Re-connect to existing host
+                this.#connect(this.host);    // try reconnection to existing host
             });
             this.#close(false);     // Close existing socket    
         }
+
         this.playingBack = false;   // Playback ended
     }
 
@@ -959,6 +961,7 @@ class NexusStreamer {
                     }
 
                     default: {
+                        this.debug && console.debug(getTimestamp() + " [NEXUS] Data packet type '%s'", type);
                         break
                     }
                 }

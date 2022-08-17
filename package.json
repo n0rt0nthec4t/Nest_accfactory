@@ -47,6 +47,7 @@
     "hap-nodejs": ">=0.10.3-beta",
     "axios": ">=0.22.0",
     "pbf": ">=3.2.1",
+    "ws": ">=7.5.6",
     "ffmpeg-for-homebridge" : ">=0.1.0"
   }
 }

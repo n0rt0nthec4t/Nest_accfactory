@@ -112,13 +112,15 @@
 //      -- Config option for which H264 encoder to use. default is to just copy the stream
 //      -- Better framerate output for HKSV recordings
 //      -- re-code cam event snapshots
+//      -- simplified HKSV recording code loop
+//      -- can specify seperate h264 encoders for live view vs recording. Defaults now "copy" for live view and "libx264" for recording
 //
 // bugs
 // -- Sarting Jan 2020, google has enabled reCAPTCHA for Nest Accounts. Modfied code to no longer use user/name password login, but access token
 //    Access token can be view by logging in to https//home.nest.com on webbrowser then in going to https://home.nest.com/session  Seems access token expires every 30days
 //    so needs manually updating (haven't seen it expire yet.....)
 //
-// Version 23/7/2022
+// Version 3/8/2022
 // Mark Hulskamp
 
 module.exports = accessories = [];
@@ -171,7 +173,7 @@ var NexusStreamer = require("./nexusstreamer");
 // Define constants
 const AccessoryName =  "Nest";
 const AccessoryPincode = "031-45-154";
-const USERAGENT = "iPhone iOS 15.4 Dropcam/5.67.0.6 com.nestlabs.jasper.release Darwin";
+const USERAGENT = "Nest/5.69.0 (iOScom.nestlabs.jasper.release) os=15.6";
 const REFERER = "https://home.nest.com"
 const CAMERAAPIHOST = "https://webapi.camera.home.nest.com";
 const NESTAPITIMEOUT = 10000;                                   // Calls to Nest API timeout
@@ -999,11 +1001,11 @@ class CameraClass {
 
         this.updateHomeKit(HomeKitAccessory, deviceData);  // Do initial HomeKit update
         console.log("Setup %s '%s' on '%s'", HomeKitAccessory.displayName, thisServiceName, HomeKitAccessory.username, deviceData.HKSV == true ? "with HomeKit Secure Video" : this.MotionServices.length >= 1 ? "with motion sensor(s)" : "");
+        console.log("Nest Aware subscription for '%s' is", HomeKitAccessory.username, (deviceData.nest_aware == true ? "active" : "not active"))
     }
 
     // Taken and adapted from https://github.com/hjdhjd/homebridge-unifi-protect/blob/eee6a4e379272b659baa6c19986d51f5bf2cbbbc/src/protect-ffmpeg-record.ts
     async *handleRecordingStreamRequest(streamId) {
-        var lastSegment = false;
         var header = Buffer.alloc(0);
         var bufferRemaining = Buffer.alloc(0);
         var dataLength = 0;
@@ -1014,8 +1016,10 @@ class CameraClass {
         if (this.MotionServices[0].service.getCharacteristic(Characteristic.MotionDetected).value == true) {
             // Audio if enabled on doorbell/camera && audio recording configured for HKSV 
             var includeAudio = (this.nestObject.nestDevices[this.deviceID].audio_enabled == true && this.controller.recordingManagement.recordingManagementService.getCharacteristic(Characteristic.RecordingAudioActive).value == Characteristic.RecordingAudioActive.ENABLE);
-            var recordCodec = this.nestObject.nestDevices[this.deviceID].H264Encoder;    // Codec to use for H264 encoding
+            var recordCodec = this.nestObject.nestDevices[this.deviceID].H264EncoderRecord;    // Codec to use for H264 encoding when recording
     
+            var recordCodec = VideoCodecs.COPY;
+
             // Build our ffmpeg command string for the video stream
             var ffmpeg = "-hide_banner"
                 + " -fflags +discardcorrupt"
@@ -1143,56 +1147,37 @@ class CameraClass {
             this.NexusStreamer.startRecordStream("HKSV" + streamId, this.HKSVRecorder.ffmpeg, this.HKSVRecorder.video, this.HKSVRecorder.audio, true, 0);
             this.nestObject.config.debug.includes(Debugging.HKSV) && console.debug(getTimestamp() + " [HKSV] Recording started on '%s' %s %s", this.nestObject.nestDevices[this.deviceID].mac_address, (includeAudio == true ? "with audio" : "without audio"), (recordCodec != VideoCodecs.COPY ? "using H264 encoder " + recordCodec : ""));
 
-            for await (const mp4box of this.segmentGenerator()) {
-                // We'll process segments while motion is still active or ffmpeg process has exited
-                lastSegment = (this.MotionServices[0].service.getCharacteristic(Characteristic.MotionDetected).value == false || this.HKSVRecorder.ffmpeg == null);
-        
-                yield {
-                    data: mp4box,
-                    isLast: lastSegment,
-                };
-
-                if (lastSegment == true) {
-                    // Active motion ended, so end recording
-                    return;
+            // Loop generating either FTYP/MOOV box pairs or MOOF/MDAT box pairs for HomeKit Secure Video.
+            // Exit when the recorder process is nolonger running
+            // HAP-NodeJS can cancel this async generator function when recording completes also
+            var segment = [];
+            for(;;) {
+                if (this.HKSVRecorder.ffmpeg == null) {
+                    // ffmpeg recorder process isnt running, so finish up the loop
+                    break;
                 }
-            }
-        }
+                
+                if (this.HKSVRecorder.buffer == null || this.HKSVRecorder.buffer.length == 0) {
+                    // since the ffmpeg recorder process hasn't notified us of any mp4 fragment boxes, so wait until there are some
+                    await EventEmitter.once(this.events, MP4BOX);
+                }
+            
+                var mp4box = this.HKSVRecorder.buffer && this.HKSVRecorder.buffer.shift();
+                if (mp4box == null || typeof mp4box != "object") {
+                    // Not an mp4 fragment box, so try again
+                    continue;
+                }
 
-        if (lastSegment == false && this.HKSVRecorder.ffmpeg == null) {
-            // Seems we have haven't sent last segment notification to HKSV (likely some failure?), so do so now. Will still generate a HDS error in log
-            yield { data: Buffer.alloc(0), isLast: true };
-            return;
-        }
-    }
+                // Queue up this fragment mp4 box to send back to HomeKit.
+                segment.push(mp4box.header, mp4box.data);
 
-    // Taken from https://github.com/hjdhjd/homebridge-unifi-protect/blob/eee6a4e379272b659baa6c19986d51f5bf2cbbbc/src/protect-ffmpeg-record.ts
-    async *segmentGenerator() {
-        var segment = [];
-
-        // Loop forever, generating either FTYP/MOOV box pairs or MOOF/MDAT box pairs for HomeKit Secure Video.
-        for(;;) {
-            if (this.HKSVRecorder.ffmpeg == null) {
-                // ffmpeg recorder process isnt running, so finish up
-                return;
-            }
-            if (this.HKSVRecorder.buffer == null || this.HKSVRecorder.buffer.length == 0) {
-                // since the ffmpeg recorder process hasn't notified us of any mp4 fragment boxes, so wait until there are some
-                await EventEmitter.once(this.events, MP4BOX);
-            }
-        
-            var mp4box = this.HKSVRecorder.buffer && this.HKSVRecorder.buffer.shift();
-            if (mp4box == null || typeof mp4box != "object") {
-                // Not an mp4 fragment box, so try again
-                continue;
-            }
-
-            // Queue up this fragment mp4 box to send back to HomeKit.
-            segment.push(mp4box.header, mp4box.data);
-
-            if (mp4box.type === "moov" || mp4box.type === "mdat") {
-                yield Buffer.concat(segment);
-                segment = [];
+                if (mp4box.type === "moov" || mp4box.type === "mdat") {
+                    yield {
+                        data: Buffer.concat(segment),
+                        isLast: (this.MotionServices[0].service.getCharacteristic(Characteristic.MotionDetected).value == false || this.HKSVRecorder.ffmpeg == null)
+                    };
+                    segment = [];
+                }
             }
         }
     }
@@ -1351,11 +1336,11 @@ class CameraClass {
                 delete this.pendingSessions[request.sessionID]; // remove this pending session information
 
                 var includeAudio = (this.nestObject.nestDevices[this.deviceID].audio_enabled == true);
-                var streamCodec = this.nestObject.nestDevices[this.deviceID].H264Encoder;    // Codec to use for H264 encoding
+                var streamCodec = this.nestObject.nestDevices[this.deviceID].H264EncoderLive;    // Codec to use for H264 streaming encoding 
 
                 // Build our ffmpeg command string for the video stream
                 var ffmpeg = "-hide_banner"
-                    + " -use_wallclock_as_timestamps 1"
+                   // + " -use_wallclock_as_timestamps 1"
                     + " -fflags +discardcorrupt"
                     + " -f h264 -an -thread_queue_size 1024 -i pipe:0"  // Video data only on stdin
                     + (includeAudio == true ? " -f aac -vn -thread_queue_size 1024 -i pipe:3" : "");  // Audio data only on extra pipe created in spawn command
@@ -1416,8 +1401,9 @@ class CameraClass {
                     }
                     if (data.toString().includes("frame=") == false) {
                         // Monitor ffmpeg output while testing. Use "ffmpeg as a debug option"
-                        this.nestObject.config.debug.includes(Debugging.FFMPEG) && console.debug(getTimestamp() + " [FFMPEG]", data.toString());
+                       // this.nestObject.config.debug.includes(Debugging.FFMPEG) && console.debug(getTimestamp() + " [FFMPEG]", data.toString());
                     }
+                    console.debug(data.toString());
                 });
 
                 ffmpegStreaming.on("exit", (code, signal) => {
@@ -1810,7 +1796,8 @@ class NestClass extends EventEmitter {
             doorbellCooldown : 60000,                   // Default cooldown period for doorbell button press (1min/60secs)
             motionCooldown : 60000,                     // Default cooldown period for motion detected (1min/60secs)
             personCooldown : 120000,                    // Default cooldown person for person detected (2mins/120secs)
-            H264Encoder : VideoCodecs.COPY,             // Default H264 Encoder for HKSV recording and streaming
+            H264EncoderRecord : VideoCodecs.LIBX264,    // Default H264 Encoder for HKSV recording
+            H264EncoderLive : VideoCodecs.COPY,         // Default H264 Encoder for HomeKit/HKSV live video
             mDNS : MDNSAdvertiser.BONJOUR,              // Default mDNS advertiser for HAP-NodeJS library
             EveApp : true                               // Intergration with evehome app
         };
@@ -1850,24 +1837,38 @@ class NestClass extends EventEmitter {
                     if (value.toUpperCase() == "AVAHI") this.config.mDNS = MDNSAdvertiser.AVAHI;    // Use avahi as the mDNS advertiser
                 }
                 if (key == "H264ENCODER" && typeof value == "string") {
-                    if (value.toUpperCase() == "LIBX264") this.config.H264Encoder = VideoCodecs.LIBX264;  // Use libx264, software encoder
-                    if (value.toUpperCase() == "H264_OMX") this.config.H264Encoder = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
+                    if (value.toUpperCase() == "LIBX264") {
+                        this.config.H264EncoderRecord = VideoCodecs.LIBX264;  // Use libx264, software encoder
+                        this.config.H264EncoderLive = VideoCodecs.LIBX264;  // Use libx264, software encoder
+                    }
+                    if (value.toUpperCase() == "H264_OMX") {
+                        this.config.H264EncoderRecord = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
+                        this.config.H264EncoderLive = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
+                    }
+                }
+                if (key == "H264RECORDENCODER" && typeof value == "string") {
+                    if (value.toUpperCase() == "LIBX264") this.config.H264EncoderRecord = VideoCodecs.LIBX264;  // Use libx264, software encoder
+                    if (value.toUpperCase() == "H264_OMX") this.config.H264EncoderRecord = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
+                }
+                if (key == "H264STREAMENCODER" && typeof value == "string") {
+                    if (value.toUpperCase() == "LIBX264") this.config.H264EncoderLive = VideoCodecs.LIBX264;  // Use libx264, software encoder
+                    if (value.toUpperCase() == "H264_OMX") this.config.H264EncoderLive = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
                 }
                 if (key == "HKSVPREBUFFER" && typeof value == "number") {
-                    if (value < 1000) value = value * 1000;  // If less 1000, assume seconds value passed in, so convert to milliseconds
+                    if (value < 1000) value = value * 1000;  // If less than 1000, assume seconds value passed in, so convert to milliseconds
                     this.config.HKSVPreBuffer = value;   // Global HKSV pre-buffer sizing
                 }
                 if (key == "DOORBELLCOOLDOWN" && typeof value == "number") {
-                    if (value < 1000) value = value * 1000;  // If less 1000, assume seconds value passed in, so convert to milliseconds
+                    if (value < 1000) value = value * 1000;  // If less than 1000, assume seconds value passed in, so convert to milliseconds
                     this.config.doorbellCooldown = value;   // Global doorbell press cooldown time
                 }
                 if (key == "EVEAPP" && typeof value == "boolean") this.config.EveApp = value;    // Evehome app integration 
                 if (key == "MOTIONCOOLDOWN" && typeof value == "number") {
-                    if (value < 1000) value = value * 1000;  // If less 1000, assume seconds value passed in, so convert to milliseconds
+                    if (value < 1000) value = value * 1000;  // If less than 1000, assume seconds value passed in, so convert to milliseconds
                     this.config.motionCooldown = value;   // Global motion detected cooldown time
                 }
                 if (key == "PERSONCOOLDOWN" && typeof value == "number") {
-                    if (value < 1000) value = value * 1000;  // If less 1000, assume seconds value passed in, so convert to milliseconds
+                    if (value < 1000) value = value * 1000;  // If less than 1000, assume seconds value passed in, so convert to milliseconds
                     this.config.personCooldown = value;   // Global person detected cooldown time
                 }
                 if (typeof value == "object") {
@@ -1878,23 +1879,38 @@ class NestClass extends EventEmitter {
                         if (subKey.toUpperCase() == "HKSV" && typeof value == "boolean") this.extraOptions[key]["HKSV"] = value;    // HomeKit Secure Video for this device?
                         if (subKey.toUpperCase() == "EVEAPP" && typeof value == "boolean") this.extraOptions[key]["EveApp"] = value;    // Evehome app integration
                         if (subKey.toUpperCase() == "H264ENCODER" && typeof value == "string") {
-                            if (value.toUpperCase() == "LIBX264") this.extraOptions[key]["H264Encoder"] = VideoCodecs.LIBX264;  // Use libx264, software encoder
-                            if (value.toUpperCase() == "H264_OMX") this.extraOptions[key]["H264Encoder"] = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
+                            // Legacy option. Replaced by H264EncoderRecord and H264EncoderLive
+                            if (value.toUpperCase() == "LIBX264") {
+                                this.extraOptions[key]["H264EncoderRecord"] = VideoCodecs.LIBX264;  // Use libx264, software encoder
+                                this.extraOptions[key]["H264EncoderLive"] = VideoCodecs.LIBX264;  // Use libx264, software encoder
+                            }
+                            if (value.toUpperCase() == "H264_OMX") {
+                                this.extraOptions[key]["H264EncoderRecord"] = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
+                                this.extraOptions[key]["H264EncoderLive"] = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
+                            }
+                        }
+                        if (subKey.toUpperCase() == "H264RECORDENCODER" && typeof value == "string") {
+                            if (value.toUpperCase() == "LIBX264") this.extraOptions[key]["H264EncoderRecord"] = VideoCodecs.LIBX264;  // Use libx264, software encoder
+                            if (value.toUpperCase() == "H264_OMX") this.extraOptions[key]["H264EncoderRecord"] = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
+                        }
+                        if (subKey.toUpperCase() == "H264STREAMENCODER" && typeof value == "string") {
+                            if (value.toUpperCase() == "LIBX264") this.extraOptions[key]["H264EncoderLive"] = VideoCodecs.LIBX264;  // Use libx264, software encoder
+                            if (value.toUpperCase() == "H264_OMX") this.extraOptions[key]["H264EncoderLive"] = VideoCodecs.H264_OMX;  // Use the older RPI hardware h264 encoder
                         }
                         if (subKey.toUpperCase() == "HKSVPREBUFFER" && typeof value == "number") {
-                            if (value < 1000) value = value * 1000;  // If less 1000, assume seconds value passed in, so convert to milliseconds
+                            if (value < 1000) value = value * 1000;  // If less than 1000, assume seconds value passed in, so convert to milliseconds
                             this.extraOptions[key]["HKSVPreBuffer"] = value;   // HKSV pre-buffer sizing for this device
                         }
                         if (subKey.toUpperCase() == "DOORBELLCOOLDOWN" && typeof value == "number") {
-                            if (value < 1000) value = value * 1000;  // If less 1000, assume seconds value passed in, so convert to milliseconds
+                            if (value < 1000) value = value * 1000;  // If less than 1000, assume seconds value passed in, so convert to milliseconds
                             this.extraOptions[key]["doorbellCooldown"] = value;   // Doorbell press cooldown time for this device
                         }              
                         if (subKey.toUpperCase() == "MOTIONCOOLDOWN" && typeof value == "number") {
-                            if (value < 1000) value = value * 1000;  // If less 1000, assume seconds value passed in, so convert to milliseconds
+                            if (value < 1000) value = value * 1000;  // If less than 1000, assume seconds value passed in, so convert to milliseconds
                             this.extraOptions[key]["motionCooldown"] = value;   // Motion detected cooldown time for this device
                         }
                         if (subKey.toUpperCase() == "PERSONCOOLDOWN" && typeof value == "number") {
-                            if (value < 1000) value = value * 1000;  // If less 1000, assume seconds value passed in, so convert to milliseconds
+                            if (value < 1000) value = value * 1000;  // If less than 1000, assume seconds value passed in, so convert to milliseconds
                             this.extraOptions[key]["personCooldown"] = value;   // Person detected cooldown time for this device
                         }
                         if (subKey.toUpperCase() == "HUMIDITYSENSOR" && typeof value == "boolean") this.extraOptions[key]["humiditySensor"] = value;    // Seperate humidity sensor for this device. Only valid for thermostats
@@ -2444,6 +2460,7 @@ class NestClass extends EventEmitter {
                     this.nestDevices[camera.serial_number].mac_address = tempMACAddress;  // Our created MAC address;
                     this.nestDevices[camera.serial_number].description = camera.hasOwnProperty("description") ? __makeValidHomeKitName(camera.description) : "";
                     this.nestDevices[camera.serial_number].camera_uuid = deviceID;  // Can generate from .nest_device_structure anyway
+                    this.nestDevices[camera.serial_number].nest_aware = (camera.cvr_enrolled.toUpperCase() != "NONE");  // Does user have an active Nest aware subscription 
                     this.nestDevices[camera.serial_number].direct_nexustalk_host = camera.direct_nexustalk_host;
                     this.nestDevices[camera.serial_number].websocket_nexustalk_host = camera.websocket_nexustalk_host;
                     this.nestDevices[camera.serial_number].streaming_enabled = (camera.streaming_state.includes("enabled") ? true : false);
@@ -2471,7 +2488,8 @@ class NestClass extends EventEmitter {
                     // Insert any extra options we've read in from configuration file for this device
                     this.nestDevices[camera.serial_number].EveApp = this.config.EveApp;    // Global config option for EveHome App integration. Gets overriden below for specific doorbell/camera
                     this.nestDevices[camera.serial_number].HKSV = this.config.HKSV;    // Global config option for HomeKit Secure Video. Gets overriden below for specific doorbell/camera
-                    this.nestDevices[camera.serial_number].H264Encoder = this.config.H264Encoder; // Global config option for using H264Encoder. Gets overriden below for specific doorbell/camera
+                    this.nestDevices[camera.serial_number].H264EncoderRecord = this.config.H264EncoderRecord; // Global config option for using H264EncoderRecord. Gets overriden below for specific doorbell/camera
+                    this.nestDevices[camera.serial_number].H264EncoderLive = this.config.H264EncoderLive; // Global config option for using H264EncoderLive. Gets overriden below for specific doorbell/camera
                     this.nestDevices[camera.serial_number].HKSVPreBuffer = this.config.HKSVPreBuffer;  // Global config option for HKSV pre buffering size. Gets overriden below for specific doorbell/camera
                     this.nestDevices[camera.serial_number].doorbellCooldown = this.config.doorbellCooldown; // Global default for doorbell press cooldown. Gets overriden below for specific doorbell/camera
                     this.nestDevices[camera.serial_number].motionCooldown = this.config.motionCooldown; // Global default for motion detected cooldown. Gets overriden below for specific doorbell/camera
