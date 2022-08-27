@@ -1017,8 +1017,6 @@ class CameraClass {
             // Audio if enabled on doorbell/camera && audio recording configured for HKSV 
             var includeAudio = (this.nestObject.nestDevices[this.deviceID].audio_enabled == true && this.controller.recordingManagement.recordingManagementService.getCharacteristic(Characteristic.RecordingAudioActive).value == Characteristic.RecordingAudioActive.ENABLE);
             var recordCodec = this.nestObject.nestDevices[this.deviceID].H264EncoderRecord;    // Codec to use for H264 encoding when recording
-    
-            var recordCodec = VideoCodecs.COPY;
 
             // Build our ffmpeg command string for the video stream
             var ffmpeg = "-hide_banner"
@@ -1340,7 +1338,7 @@ class CameraClass {
 
                 // Build our ffmpeg command string for the video stream
                 var ffmpeg = "-hide_banner"
-                   // + " -use_wallclock_as_timestamps 1"
+                    + " -use_wallclock_as_timestamps 1"
                     + " -fflags +discardcorrupt"
                     + " -f h264 -an -thread_queue_size 1024 -i pipe:0"  // Video data only on stdin
                     + (includeAudio == true ? " -f aac -vn -thread_queue_size 1024 -i pipe:3" : "");  // Audio data only on extra pipe created in spawn command
@@ -1401,9 +1399,8 @@ class CameraClass {
                     }
                     if (data.toString().includes("frame=") == false) {
                         // Monitor ffmpeg output while testing. Use "ffmpeg as a debug option"
-                       // this.nestObject.config.debug.includes(Debugging.FFMPEG) && console.debug(getTimestamp() + " [FFMPEG]", data.toString());
+                        this.nestObject.config.debug.includes(Debugging.FFMPEG) && console.debug(getTimestamp() + " [FFMPEG]", data.toString());
                     }
-                    console.debug(data.toString());
                 });
 
                 ffmpegStreaming.on("exit", (code, signal) => {
