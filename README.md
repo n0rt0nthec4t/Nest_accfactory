@@ -71,7 +71,7 @@ The options available are within the configuration file are listed below. Some o
 | H264EncoderRecord | copy, libx264, h264_omx | H264 encoder ffmpeg used for HKSV recording. Default is libx264                           | global/local |
 | MotionCooldown    | seconds or milliseconds | Ignore motion detection for this time once triggered. Default is 1 minute                 | global/local |
 | PersonCooldown    | seconds or milliseconds | Ignore person detection for this time once triggered (Non HKSV only) Default is 2 minutes | global/local |
-| DoorbellCooldown  | seconds or milliseconds | Ignore doorbeel button pressed for this time once triggered Default is 1 minute           | global/local |
+| DoorbellCooldown  | seconds or milliseconds | Ignore doorbell button pressed for this time once triggered Default is 1 minute           | global/local |
 | Exclude           | true, false             | Exclude a device                                                                          | local        |
 
 ## HomeKit Pairing
