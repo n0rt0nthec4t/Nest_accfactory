@@ -89,6 +89,10 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                            |
 |------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| v0.0.9           | Major code rewrite for Nest accessories                                                                                            |
+|                  | Live streaming for cameras hardcoded to use "copy" for H264 encoder                                                                |
+|                  | Fixes to maintain connection for HKSV streaming from Nest                                                                          |
+|                  | Known issue: Audio sync for HKSV recording maybe out due to Nest's use of adaptive framerates. Investigating work around           |
 | v0.0.8           | H264Encoder config option changes. Will use H264EncoderLive and H264EncoderRecord                                                  |
 | v0.0.7           | Minor code fixes                                                                                                                   |
 | v0.0.6           | H264Encoder option can also be specified for a specific doorbell/camera.                                                           |
