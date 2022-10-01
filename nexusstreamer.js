@@ -197,30 +197,28 @@ const AACMONO48000BLANK = Buffer.from([
 
 // NeuxsStreamer object
 class NexusStreamer {
-	constructor(nestToken, tokenType, cameraData, debug) {
-        this.camera = cameraData; // Current camera data
+	constructor(deviceID, cameraToken, tokenType, deviceData, debug) {
+        this.camera = deviceData; // Current camera data
 
         this.buffer = {active: false, size: 0, buffer: [], streams: []};    // Buffer and stream details
 
         this.socket = null;
         this.host = null;   // No intial host to connect to
+        this.pendingHost = null;
         this.nexusvideo = {channel_id: -1, start_time: 0, sample_rate: 0, packet_time: 0};
         this.nexusaudio = {channel_id: -1, start_time: 0, sample_rate: 0, packet_time: 0};
         this.pendingMessages = [];
         this.pendingBuffer = null;
         this.authorised = false;
-        this.pendingHostChange = false;
-        this.streamQuality = StreamProfile.VIDEO_H264_2MBIT_L40;    // Default streaming quaility
+        this.weDidClose = true; // Flag if we did teh socket close gracefully
 
         this.timer = null;  // Internal timer handle
         this.pingtimer = null;  // Ping timer handle
         this.sessionID = null;  // no session ID yet.. We'll assign a random one when we connect to the nexus stream
-        this.deviceID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".replace(/x/g, () => {
-            return Math.floor(Math.random() * 16).toString(16).toUpperCase();
-        }); // Random UUID v4 device ID. We do this once during creation of the object only
+        this.deviceID = deviceID;   // HomeKit accessory UUID
 
         // Get access token and set token type
-        this.nestToken = nestToken;
+        this.cameraToken = cameraToken;
         this.tokenType = tokenType;
 
         this.playingBack = false;   // If we're playing back nexus data
@@ -274,13 +272,13 @@ class NexusStreamer {
         }
         this.debug && console.debug(getTimestamp() + " [NEXUS] Started buffering from '%s' with size of '%s'", (this.host == null ? this.camera.direct_nexustalk_host : this.host), milliseconds);
     }
-    
-    startLiveStream(sessionID, videoStream, audioStream, talkbackStream, alignToSPSFrame) {
+
+    startLiveStream(sessionID, videoStream, audioStream, alignToSPSFrame) {
         // Setup error catching for video/audio streams
-        videoStream != null && videoStream.on("error", (error) => {
+        videoStream && videoStream.on("error", (error) => {
             // EPIPE errors??
         });
-        audioStream != null && audioStream.on("error", (error) => {
+        audioStream && audioStream.on("error", (error) => {
             // EPIPE errors??
         });
 
@@ -290,25 +288,8 @@ class NexusStreamer {
             this.#connect(this.camera.direct_nexustalk_host);
         }
         
-        // Should have an active connection here now, so can add video/audio/talkback stream handles for our ffmpeg router to handle
-        var index = (this.buffer.streams.push({type: "live", id: sessionID, video: videoStream, audio: audioStream, talkback: talkbackStream, timeout: null, aligned: (typeof alignToSPSFrame == "undefined" || alignToSPSFrame == true ? false : true)}) - 1);
-
-        // Setup talkback audio stream if configured
-        if (talkbackStream != null) {
-            talkbackStream.on("error", (error) => {
-                // EPIPE errors??
-            });
-            talkbackStream.on("data", (data) => {
-                // Received audio data to send onto nexus for output to doorbell/camera
-                this.#AudioPayload(data);
-
-                clearTimeout(this.buffer.streams[index].timeout);   // Clear return audio timeout
-                this.buffer.streams[index].timeout = setTimeout(() => {
-                    // no audio received in 500ms, so mark end of stream
-                    this.#AudioPayload(Buffer.from([]));
-                }, 500);
-            });
-        }
+        // Add video/audio streams for our ffmpeg router to handle outputting to
+        this.buffer.streams.push({type: "live", id: sessionID, video: videoStream, audio: audioStream, aligned: (typeof alignToSPSFrame == "undefined" || alignToSPSFrame == true ? false : true)});
 
         // finally, we've started live stream
         this.debug && console.debug(getTimestamp() + " [NEXUS] Started live stream from '%s'", (this.host == null ? this.camera.direct_nexustalk_host : this.host));
@@ -316,10 +297,10 @@ class NexusStreamer {
 
     startRecordStream(sessionID, ffmpegRecord, videoStream, audioStream, alignToSPSFrame, fromTime) {
         // Setup error catching for video/audio streams
-        videoStream != null && videoStream.on("error", (error) => {
+        videoStream && videoStream.on("error", (error) => {
             // EPIPE errors??
         });
-        audioStream != null && audioStream.on("error", (error) => {
+        audioStream && audioStream.on("error", (error) => {
             // EPIPE errors??
         });
 
@@ -328,13 +309,69 @@ class NexusStreamer {
             this.debug && console.debug(getTimestamp() + " [NEXUS] Starting connection to '%s'", this.camera.direct_nexustalk_host);
             this.#connect(this.camera.direct_nexustalk_host);
         }
+
+        // Output from the request time position in the buffer until one index before the end of buffer
+        if (this.buffer.active == true) {
+            var sentElements = 0;
+            var doneAlign = (typeof alignToSPSFrame == "undefined" || alignToSPSFrame == true ? false : true);
+            for (var bufferIndex = 0; bufferIndex < this.buffer.buffer.length; bufferIndex++) {
+                if (fromTime == 0 || (fromTime != 0 && this.buffer.buffer[bufferIndex].synctime >= fromTime)) {
+                    if (doneAlign == false && this.buffer.buffer[bufferIndex].type == "video" && (this.buffer.buffer[bufferIndex].data && this.buffer.buffer[bufferIndex].data[0] & 0x1f) == H264FrameTypes.SPS) {
+                        doneAlign = true;
+                    }
+                    if (doneAlign == true) {
+                        // This is a recording streaming stream, and we have been initally aligned to a h264 SPS frame, so send on data now
+                        if (this.buffer.buffer[bufferIndex].type == "video" && videoStream != null) {
+                            // H264 NAL Units "0001" are required to be added to beginning of any video data we output
+                            videoStream.write(Buffer.concat([H264NALUnit, this.buffer.buffer[bufferIndex].data]));
+                        }
+                        if (this.buffer.buffer[bufferIndex].type == "audio" && audioStream != null) { 
+                            audioStream.write(this.buffer.buffer[bufferIndex].data);
+                        }
+                        sentElements++; // Increment the number of elements we output from the buffer
+                    }
+                }
+            }
+            this.debug && console.debug(getTimestamp() + " [NEXUS] Recording stream '%s' requested buffered data first. Sent '%s' buffered elements", sessionID, sentElements);
+        }
     
-        // Should have an active connection here now, so can add video/audio streams for our ffmpeg router to handle
-        // the ffmpeg router will also handle sending any buffered stream data before any new data
-        this.buffer.streams.push({type: "record", id: sessionID, record: ffmpegRecord, video: videoStream, audio: audioStream, aligned: (typeof alignToSPSFrame == "undefined" || alignToSPSFrame == true ? false : true), doneprebuffer: false, fromtime: fromTime});
+        // Add video/audio streams for our ffmpeg router to handle outputting to
+        this.buffer.streams.push({type: "record", id: sessionID, record: ffmpegRecord, video: videoStream, audio: audioStream, aligned: doneAlign});
 
         // Finally we've started the recording stream
         this.debug && console.debug(getTimestamp() + " [NEXUS] Started recording stream from '%s'", (this.host == null ? this.camera.direct_nexustalk_host : this.host));
+    }
+
+    startTalkStream(sessionID, talkbackStream) {
+        // Setup talkback audio stream if configured
+        if (talkbackStream != null) {
+            var index = this.buffer.streams.findIndex(({ id }) => id == sessionID);
+            if (index != -1) {
+                this.buffer.streams[index].audioTimeout = null;  // NO timeout
+
+                talkbackStream.on("error", (error) => {
+                    // EPIPE errors??
+                });
+
+                talkbackStream.on("data", (data) => {
+                    // Received audio data to send onto nexus for output to doorbell/camera
+                    this.#AudioPayload(data);
+
+                    clearTimeout(this.buffer.streams[index].audioTimeout);   // Clear return audio timeout
+                    this.buffer.streams[index].audioTimeout = setTimeout(() => {
+                        // no audio received in 500ms, so mark end of stream
+                        this.#AudioPayload(Buffer.from([]));
+                    }, 500);
+                });
+            }
+        }
+    }
+
+    stopTalkStream(sessionID) {
+        var index = this.buffer.streams.findIndex(({ type, id }) => id == sessionID);
+        if (index != -1) {
+            this.buffer.streams[index].timeout && clearTimeout(this.buffer.streams[index].timeout); // Clear any active return audio timer
+        }
     }
 
     stopRecordStream(sessionID) {
@@ -383,19 +420,19 @@ class NexusStreamer {
         }
     }
 
-    update(nestToken, tokenType, cameraData) {
-        if (typeof cameraData == "object") {
-            if (nestToken != this.nestToken || tokenType != this.tokenType) {
+    update(cameraToken, tokenType, deviceData) {
+        if (typeof deviceData == "object") {
+            if (cameraToken != this.cameraToken || tokenType != this.tokenType) {
                 // access token has changed and/or token type has changed, so re-authorise
                 this.tokenType = tokenType; // Update token type
-                this.nestToken = nestToken; // Update token
+                this.cameraToken = cameraToken; // Update token
                 this.#Authenticate(true);    // Update authorisation only
             }
 
-            if ((this.camera.online != cameraData.online) || (this.camera.streaming_enabled != cameraData.streaming_enabled)) {
+            if ((this.camera.online != deviceData.online) || (this.camera.streaming_enabled != deviceData.streaming_enabled)) {
                 // Online status or streaming status has changed has changed
-                this.camera.online = cameraData.online;
-                this.camera.streaming_enabled = cameraData.streaming_enabled;
+                this.camera.online = deviceData.online;
+                this.camera.streaming_enabled = deviceData.streaming_enabled;
                 if ((this.camera.online == false || this.camera.streaming_enabled == false) && this.socket != null) {
                     this.debug && console.debug(getTimestamp() + " [NEXUS] Camera went offline");
                     this.#close(true); // as offline or streaming not enabled, close socket
@@ -405,11 +442,12 @@ class NexusStreamer {
                 }
             }
 
-            if (this.camera.direct_nexustalk_host != cameraData.direct_nexustalk_host) {
-                this.debug && console.debug(getTimestamp() + " [NEXUS] Updated Nexusstreamer host '%s'", cameraData.direct_nexustalk_host);
+            if (this.camera.direct_nexustalk_host != deviceData.direct_nexustalk_host) {
+                this.debug && console.debug(getTimestamp() + " [NEXUS] Updated Nexusstreamer host '%s'", deviceData.direct_nexustalk_host);
+                this.pendingHost = deviceData.direct_nexustalk_host;
             }
 
-            this.camera = cameraData;   // Update our internally stored copy of the camera details
+            this.camera = deviceData;   // Update our internally stored copy of the camera details
         }
     }
 
@@ -448,13 +486,17 @@ class NexusStreamer {
 
     #connect(host) {
         clearInterval(this.pingtimer);  // Clear ping timer if was running
+        this.sessionID = null;  // No session ID yet
 
-        if (this.sessionID == null) this.sessionID = Math.floor(Math.random() * (100 - 1) + 1); // Random session ID bwteen 1 and 100
         if (this.camera.streaming_enabled == true && this.camera.online == true) {
-
             if (typeof host == "undefined") {
                 // No host parameter passed in, so we'll set this to our internally stored host 
                 host = this.host;
+            }
+
+            if (this.pendingHost != null) {
+                host = this.pendingHost;
+                this.pendingHost = null;
             }
 
             this.socket = tls.connect({host: host, port: 1443}, () => {
@@ -463,7 +505,6 @@ class NexusStreamer {
                 this.debug && console.debug(getTimestamp() + " [NEXUS] Connection established to '%s'", host);
                 this.socket.setKeepAlive(true); // Keep socket connection alive
                 this.#Authenticate(false);
-                this.#startNexusData();   // start processing data
 
                 this.pingtimer = setInterval(() => {
                     // Periodically send PING message to keep stream alive
@@ -475,11 +516,11 @@ class NexusStreamer {
             this.socket.on("error", (error) => {
                 // Catch any socket errors to avoid code quitting
                 // Our "close" handler will try reconnecting if needed
-                this.debug && console.debug(getTimestamp() + " [NEXUS] Stocket error", error);
+                //this.debug && console.debug(getTimestamp() + " [NEXUS] Stocket error", error);
             });
 
-            this.socket.on("end", (error) => {
-                this.debug && console.debug(getTimestamp() + " [NEXUS] Stocket ended");
+            this.socket.on("end", () => {
+                //this.debug && console.debug(getTimestamp() + " [NEXUS] Stocket ended", this.playingBack);
             });
 
             this.socket.on("data", (data) => {
@@ -487,34 +528,24 @@ class NexusStreamer {
             });
 
             this.socket.on("close", (hadError) => {
-                var reconnect = false;
-                clearInterval(this.pingtimer);    // Clear ping timer
-                if (hadError == true && (this.buffer.active == true || this.buffer.streams.length > 0)) {
-                    // We had a socket error, but still have either active buffering occuring or output streams running
-                    // so attempt to restart connection to existing host
-                    this.debug && console.debug(getTimestamp() + " [NEXUS] Connection closed to '%s' with error. Attempting reconnection", host);
-                    reconnect = true;
-                }
-                if (hadError == false && this.playingBack == false) {
-                    // Socket appears to have closed normally ie: we've probably done that
-                    this.debug && console.debug(getTimestamp() + " [NEXUS] Connection closed to '%s'", host);
-                }
-                if (hadError == false && this.playingBack == true && (this.buffer.active == true || this.buffer.streams.length > 0)) {
-                    // No error, but the connection closed without gracefully ending playback.
-                    // We still have either active buffering occuring or output streams running
-                    // so attempt to restart connection to existing host
-                    this.debug && console.debug(getTimestamp() + " [NEXUS] Connection closed to '%s'. Attempting reconnection", host);
-                    reconnect = true;
-                }
+                var normalClose = this.weDidClose;  // Cache this, so can reset it below before we take action
 
+                clearInterval(this.pingtimer);    // Clear ping timer
                 this.playingBack = false;   // Playback ended as socket is closed
                 this.authorised = false;    // Since connection close, we can't be authorised anymore
                 this.socket = null; // Clear socket object 
                 this.sessionID = null;  // Not an active session anymore
+                this.weDidClose = false;    // Reset closed flag
 
-                if (reconnect == true) {
-                    // Restart connection
-                    //this.#connect(this.camera.direct_nexustalk_host);  // Connect back to main host to start process again
+                if (normalClose == true) {
+                    // We've closed the socket gracefully, means we don't need to reconnect
+                    this.debug && console.debug(getTimestamp() + " [NEXUS] Connection closed to '%s'", host);
+                }
+
+                if (normalClose == false && (this.buffer.active == true || this.buffer.streams.length > 0)) {
+                    // We still have either active buffering occuring or output streams running
+                    // so attempt to restart connection to existing host
+                    this.debug && console.debug(getTimestamp() + " [NEXUS] Connection was closed to '%s'. Attempting reconnection", host);
                     this.#connect(host);
                 }
             });
@@ -542,8 +573,8 @@ class NexusStreamer {
             if (this.camera_offline_h264_frame && this.socket == null) {
                 // Seems we cant access the video stream as we have an empty connection, so feed in our custom h264 frame for playback
                 // We'll use the camera off h264 frame
-                this.#ffmpegRouter("video", this.camera_offline_h264_frame);
-                this.#ffmpegRouter("audio", AACMONO48000BLANK);
+                //this.#ffmpegRouter("video", this.camera_offline_h264_frame);
+                //this.#ffmpegRouter("audio", AACMONO48000BLANK);
             }
         }, (TIMERINTERVAL / 30));   // output at 30 fps?
     }
@@ -553,26 +584,24 @@ class NexusStreamer {
         if (this.socket != null) {
             if (sendStop == true) {
                 // Send a notifcation to nexus we're finished playback
-                var stopBuffer = new protoBuf();
-                stopBuffer.writeVarintField(1, this.sessionID); // session ID}
-                this.#sendMessage(PacketType.STOP_PLAYBACK, stopBuffer.finish());
+                this.#stopNexusData();
             }
-            //this.socket.end();
             this.socket.destroy();
         }
         this.socket = null;
         this.sessionID = null;  // Not an active session anymore
         this.pendingMessages = []; // No more pending messages
+        this.weDidClose = true; // Flag we did the socket close
     }
 
     #startNexusData() {
-        if (this.camera.streaming_enabled == true && this.camera.online == true) {
+          if (this.camera.streaming_enabled == true && this.camera.online == true) {
             // Attempt to use camera's stream profile or use default
             var otherProfiles = [];
             this.camera.capabilities.forEach((element) => {
                 if (element.startsWith("streaming.cameraprofile")) {
                     var profile = element.replace("streaming.cameraprofile.", "");
-                    if (otherProfiles.indexOf(profile, 0) == -1 && this.streamQuality != StreamProfile[profile]) {
+                    if (otherProfiles.indexOf(profile, 0) == -1 && StreamProfile.VIDEO_H264_2MBIT_L40 != StreamProfile[profile]) {
                         // Profile isn't the primary profile, and isn't in the others list, so add it
                         otherProfiles.push(StreamProfile[profile]);
                     }
@@ -580,9 +609,10 @@ class NexusStreamer {
             });
 
             if (this.camera.audio_enabled == true) otherProfiles.push(StreamProfile.AUDIO_AAC); // Include AAC if audio enabled on camera
+
             var startBuffer = new protoBuf();
-            startBuffer.writeVarintField(1, this.sessionID);   // Session ID
-            startBuffer.writeVarintField(2, this.streamQuality);    // Default profile. ie: high quality
+            startBuffer.writeVarintField(1, Math.floor(Math.random() * (100 - 1) + 1)); // Random session ID bwteen 1 and 100);   // Session ID
+            startBuffer.writeVarintField(2, StreamProfile.VIDEO_H264_2MBIT_L40);    // Default profile. ie: high quality
             otherProfiles.forEach(otherProfile => {
                 startBuffer.writeVarintField(6, otherProfile);  // Other supported profiles
             });
@@ -609,38 +639,12 @@ class NexusStreamer {
             this.buffer.buffer.push({time: Date.now(), synctime: time, type: type, data: data});
         }
 
+        // Output the current data to any streams running, either a "live" or "recording" stream
         for (var streamsIndex = 0; streamsIndex < this.buffer.streams.length; streamsIndex++) {
-            if (this.buffer.streams[streamsIndex].type == "record" && this.buffer.streams[streamsIndex].doneprebuffer == false && this.buffer.active == true) {
-                // Specifically for a recording stream, output contents of current buffer first
-                this.buffer.streams[streamsIndex].doneprebuffer = true; // Nothing to pre-buffer now for this stream as we handle this below
-
-                // Output from the request time position in the buffer until one index before the end of buffer
-                var sentElements = 0;
-                for (var bufferIndex = 0; bufferIndex < this.buffer.buffer.length - 1; bufferIndex++) {
-                    if (this.buffer.streams[streamsIndex].fromtime == 0 || (this.buffer.streams[streamsIndex].fromtime != 0 && this.buffer.buffer[bufferIndex].synctime >= this.buffer.streams[streamsIndex].fromtime)) {
-                        if (this.buffer.buffer[bufferIndex].type == "video" && this.buffer.streams[streamsIndex].aligned == false && (this.buffer.buffer[bufferIndex].data && this.buffer.buffer[bufferIndex].data[0] & 0x1f) == H264FrameTypes.SPS) {
-                            this.buffer.streams[streamsIndex].aligned = true;
-                        }
-                        if (this.buffer.streams[streamsIndex].aligned == true) {
-                            // This is a recording streaming stream, and we have been initally aligned to a h264 SPS frame, so send on data now
-                            if (this.buffer.buffer[bufferIndex].type == "video" && this.buffer.streams[streamsIndex].video != null) {
-                                // H264 NAL Units "0001" are required to be added to beginning of any video data we output
-                                this.buffer.streams[streamsIndex].video.write(Buffer.concat([H264NALUnit, this.buffer.buffer[bufferIndex].data]));
-                            }
-                            if (this.buffer.buffer[bufferIndex].type == "audio" && this.buffer.streams[streamsIndex].audio != null) { 
-                                this.buffer.streams[streamsIndex].audio.write(this.buffer.buffer[bufferIndex].data);
-                            }
-                            sentElements++; // Increment the number of elements we output from the buffer
-                        }
-                    }
-                }
-                this.debug && console.debug(getTimestamp() + " [NEXUS] Recording stream '%s' requested buffered data first. Sent '%s' buffered elements", this.buffer.streams[streamsIndex].id, sentElements);
-            }
-
             // Now output the current data to the stream, either a "live" or "recording" stream
-            if (type == "video" && this.buffer.streams[streamsIndex].aligned == false && (data && data[0] & 0x1f) == H264FrameTypes.SPS) this.buffer.streams[streamsIndex].aligned = true;
+            if (this.buffer.streams[streamsIndex].aligned == false && type == "video" && (data && data[0] & 0x1f) == H264FrameTypes.SPS) this.buffer.streams[streamsIndex].aligned = true;
             if (this.buffer.streams[streamsIndex].aligned == true) {
-                // This is a live streaming stream, and we have been initally aligned to a h264 SPS frame, so send on data now
+                // We have been initally aligned to a h264 SPS frame, so send on data now
                 if (type == "video" && this.buffer.streams[streamsIndex].video != null) {
                     // H264 NAL Units "0001" are required to be added to beginning of any video data we output
                     this.buffer.streams[streamsIndex].video.write(Buffer.concat([H264NALUnit, data]));
@@ -695,11 +699,11 @@ class NexusStreamer {
         this.authorised = false;    // We're nolonger authorised
 
         if (this.tokenType == "nest") {
-            tokenBuffer.writeStringField(1, this.nestToken);   // Tag 1, session token, Nest auth accounts
-            helloBuffer.writeStringField(4, this.nestToken);   // session token, Nest auth accounts
+            tokenBuffer.writeStringField(1, this.cameraToken);   // Tag 1, session token, Nest auth accounts
+            helloBuffer.writeStringField(4, this.cameraToken);   // session token, Nest auth accounts
         }
         if (this.tokenType == "google") {
-            tokenBuffer.writeStringField(4, this.nestToken);   // Tag 4, olive token, Google auth accounts
+            tokenBuffer.writeStringField(4, this.cameraToken);   // Tag 4, olive token, Google auth accounts
             helloBuffer.writeBytesField(12, tokenBuffer.finish());    // olive token, Google auth accounts
         }
         if (typeof reauthorise == "boolean" && reauthorise == true) {
@@ -763,7 +767,6 @@ class NexusStreamer {
 
     #handlePlaybackBegin(payload) {
         // Decode playback begin packet
-        this.debug && console.debug(getTimestamp() + " [NEXUS] Playback started from '%s' with session ID '%s'", this.host, this.sessionID);
         var packet = payload.readFields(function(tag, obj, protoBuf) {
             if (tag === 1) obj.session_id = protoBuf.readVarint();
             else if (tag === 2) obj.channels.push(protoBuf.readFields(function(tag, obj, protoBuf) {
@@ -782,22 +785,21 @@ class NexusStreamer {
             else if (tag === 6) obj.fec_n_val = protoBuf.readVarint();
         }, {session_id: 0, channels: [], srtp_master_key: null, srtp_master_salt: null, fec_k_val: 0, fec_n_val: 0});
 
-        if (packet.session_id == this.sessionID) {
-            // Ensure Packet session ID matches our session
-            packet.channels && packet.channels.forEach(stream => {
-                // Find which channels match our video and audio streams
-                if (stream.codec_type == CodecType.H264) {
-                    this.nexusvideo = {channel_id: stream.channel_id, start_time: (stream.start_time * 1000), sample_rate: stream.sample_rate, packet_time: (stream.start_time * 1000)};
-                }
-                if (stream.codec_type == CodecType.AAC) {
-                    this.nexusaudio = {channel_id: stream.channel_id, start_time: (stream.start_time * 1000), sample_rate: stream.sample_rate, packet_time: (stream.start_time * 1000)};
-                }
-            });
+        packet.channels && packet.channels.forEach(stream => {
+            // Find which channels match our video and audio streams
+            if (stream.codec_type == CodecType.H264) {
+                this.nexusvideo = {channel_id: stream.channel_id, start_time: (stream.start_time * 1000), sample_rate: stream.sample_rate, packet_time: (stream.start_time * 1000)};
+            }
+            if (stream.codec_type == CodecType.AAC) {
+                this.nexusaudio = {channel_id: stream.channel_id, start_time: (stream.start_time * 1000), sample_rate: stream.sample_rate, packet_time: (stream.start_time * 1000)};
+            }
+        });
 
-            // Since this is the beginning of playback, clear any active buffers contents
-            this.buffer.buffer = [];
-            this.playingBack = true;
-        }
+        // Since this is the beginning of playback, clear any active buffers contents
+        this.buffer.buffer = [];
+        this.playingBack = true;
+        this.sessionID = packet.session_id;
+        this.debug && console.debug(getTimestamp() + " [NEXUS] Playback started from '%s' with session ID '%s'", this.host, this.sessionID);
     }
 
     #handlePlaybackPacket(payload) {
@@ -920,7 +922,8 @@ class NexusStreamer {
                 switch (type) {
                     case PacketType.OK : {
                         this.authorised = true; // OK message, means we're connected and authorised to Nexus
-                        this.#processMessages();
+                        this.#processMessages();    // process any pending messages
+                        this.#startNexusData();   // start processing data
                         break;
                     }
             
