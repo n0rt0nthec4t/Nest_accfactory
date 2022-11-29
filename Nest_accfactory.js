@@ -10,7 +10,7 @@
 //
 // The accessory supports connection to Nest using a Nest account OR a Google (migrated Nest account) account.
 //
-// Code version 19/9/2022
+// Code version 4/11/2022
 // Mark Hulskamp
 
 module.exports = accessories = [];
@@ -1788,26 +1788,24 @@ class NestSystem {
     
     // Class functions
     async connect() {
-        // Connect to Nest. We support the Nest session token and Google refresh token methods
+        // Connect to Nest. We support the Nest session token and Google cookie methods
         var tempToken = ""; 
         this.tokenExpire = null;    // Get below
         if (this.tokenType == "google") {
-            // Google refresh token method. 
-            // Use login.js taken from homebridge_nest or homebridge_nest_cam to obtain
+            // Google cookie method as refresh token method no longer supported by Google since October 2022
+            // Instructions from homebridge_nest or homebridge_nest_cam to obtain this
             console.debug(getTimestamp() + " [NEST] Performing Google account authorisation");
-            await axios.post("https://oauth2.googleapis.com/token", "refresh_token=" + this.initialToken + "&client_id=733249279899-1gpkq9duqmdp55a7e5lft1pr2smumdla.apps.googleusercontent.com&grant_type=refresh_token", {headers: {"Content-Type": "application/x-www-form-urlencoded", "user-agent": USERAGENT}})
+            await axios.get(this.initialToken.issuetoken, {headers: {"user-agent": USERAGENT, "cookie": this.initialToken.cookie, "referer": "https://accounts.google.com/o/oauth2/iframe", "Sec-Fetch-Mode": "cors", "X-Requested-With": "XmlHttpRequest"} })
             .then(async (response) => {
                 if (response.status == 200) {
                     await axios.post("https://nestauthproxyservice-pa.googleapis.com/v1/issue_jwt", "embed_google_oauth_access_token=true&expire_after=3600s&google_oauth_access_token=" + response.data.access_token + "&policy_id=authproxy-oauth-policy", {headers: {"referer": REFERER,"user-agent": USERAGENT, "Authorization": "Bearer " + response.data.access_token} })
                     .then(async (response) => {
-                        if (response.status == 200) {
-                            tempToken = response.data.jwt;
-                            this.tokenType = "google";  // Google account
-                            this.tokenExpire = Math.floor(new Date(response.data.claims.expirationTime) / 1000);   // Token expiry, should be 1hr
-                            this.cameraAPI.key = "Authorization"; // We'll put this in API header calls for cameras
-                            this.cameraAPI.value = "Basic ";    // NOTE: space at end of string. Required
-                            this.cameraAPI.token = response.data.jwt; // We'll put this in API header calls for cameras
-                        }
+                        tempToken = response.data.jwt;
+                        this.tokenType = "google";  // Google account
+                        this.tokenExpire = Math.floor(new Date(response.data.claims.expirationTime) / 1000);   // Token expiry, should be 1hr
+                        this.cameraAPI.key = "Authorization"; // We'll put this in API header calls for cameras
+                        this.cameraAPI.value = "Basic ";    // NOTE: space at end of string. Required
+                        this.cameraAPI.token = response.data.jwt; // We'll put this in API header calls for cameras
                     })
                 }
             })
@@ -2632,7 +2630,8 @@ class Configuration {
     constructor(configFile) {
         this.loaded = false;                            // Have we loaded a configuration
         this.debug = "";                                // Enable debug output, off by default
-        this.token = "";                                // Token to access Nest system. Can be either a session token or refresh token
+        this.token = "";                                // Token to access Nest system. Can be either a session token or google cookie token
+        this.tokenType = "";                            // Type of token we're using, either be "nest" or "google"
         this.weather = false;                           // Create a virtual weather station using Nest weather data
         this.HKSV = false;                              // Enable HKSV for all camera/doorbells, no by default
         this.HKSVPreBuffer = 15000;                     // Milliseconds seconds to hold in buffer. default is 15secs. using 0 disables pre-buffer
@@ -2664,11 +2663,23 @@ class Configuration {
                     this.tokenType = "nest";
                 }
                 if (key == "REFRESHTOKEN" && typeof value == "string") {
-                    this.token = value;  // Google accounts refresh token to use for Nest calls
+                    // NO LONGER SUPPORTED BY GOOGLE";
+                    console.log("Google account access via refreshToken method is no longer supported by Google. Please use the Google Cookie method");
+                }
+                if (key == "GOOGLETOKEN" && typeof value == "object") {
                     this.tokenType = "google";
+                    this.token = {}; // Google cookies token to use for Nest calls
+                    Object.entries(value).forEach(([key, value]) => {
+                        if (key.toUpperCase() == "ISSUETOKEN") this.token["issuetoken"] = value;
+                        if (key.toUpperCase() == "COOKIE") this.token["cookie"] = value;
+                    });
+                    if (this.token.hasOwnProperty("issuetoken") == false || this.token.hasOwnProperty("cookie") == false) {
+                        this.token = "";    // Not a valid Google cookie token
+                        this.tokenType = "";
+                    }
                 }
                 if (key == "WEATHER" && typeof value == "boolean") this.weather = value;    // Virtual weather station
-                if (key == "DEBUG" && typeof value == "boolean" && value == true) this.debug = "nestnexushksv";  // Debugging output will Nest, HKSV and NEXUS
+                if (key == "DEBUG" && typeof value == "boolean" && value == true) this.debug = "nest,nexus,hksv";  // Debugging output will Nest, HKSV and NEXUS
                 if (key == "DEBUG" && typeof value == "string") {
                     // Comma delimited string for what we output in debugging
                     // nest, hksv, ffmpeg, nexus, external are valid options in the string
