@@ -36,6 +36,19 @@ Nest_config.json is the configuration file where various options can be. An exam
 }
 ```
 
+or
+
+```
+{
+    "GoogleToken" : {
+        "issuetoken" : "<google issue token url>",
+        "cookie" : "<google cookie>"
+    },
+    "HKSV" : true,
+    "H264Encoder" : "copy"
+}
+```
+
 An advanced configuration example is below
 
 ```
@@ -58,7 +71,7 @@ The options available are within the configuration file are listed below. Some o
 
 | Option            | Values                  | Description                                                                               | Global/Local |
 |-------------------|-------------------------|-------------------------------------------------------------------------------------------|--------------|
-| RefreshToken      |                         | Google account refresh token                                                              | global       |
+| GoogleToken       |                         | Google cookie token object {"issuetoken": "xxx", "cookie": "xxx" }                        | global       |
 | SessionToken      |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
 | EveApp            | true, false             | Integration with Evehome App. Default is true                                             | global/local |
 | Weather           | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
@@ -89,6 +102,7 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                            |
 |------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| v0.1.0           | Removes Google refresh token method as nolonger supported. Switches to Google cookie method                                        |
 | v0.0.9           | Major code rewrite for Nest accessories                                                                                            |
 |                  | Live streaming for cameras hardcoded to use "copy" for H264 encoder                                                                |
 |                  | Fixes to maintain connection for HKSV streaming from Nest                                                                          |
