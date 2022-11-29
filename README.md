@@ -38,11 +38,11 @@ Simply set "SessionToken" in your Nest_config.json file to the value of "access_
 
 ### Obtaining a Google cookie token for a Google Account
 
-Google Accounts are configured using the "GoogleToken" object in Nest_config.json, which contains two fields, "issueToken" and "cookie", which looks like this:
+Google Accounts are configured using the "GoogleToken" object in Nest_config.json, which contains two fields, "issuetoken" and "cookie", which looks like this:
 
 ```
       "GoogleToken": {
-        "issueToken": "https://accounts.google.com/o/oauth2/iframerpc?action=issueToken...",
+        "issuetoken": "https://accounts.google.com/o/oauth2/iframerpc?action=issueToken...",
         "cookie": "..."
       },
 ```
@@ -55,7 +55,7 @@ The values of "issueToken" and "cookies" are specific to your Google Account. To
 4. In the 'Filter' box, enter issueToken
 5. Go to home.nest.com, and click 'Sign in with Google'. Log into your account.
 6. One network call (beginning with iframerpc) will appear in the Dev Tools window. Click on it.
-7. In the Headers tab, under General, copy the entire Request URL (beginning with https://accounts.google.com). This is your "issueToken" in config.json.
+7. In the Headers tab, under General, copy the entire Request URL (beginning with https://accounts.google.com). This is your "issuetoken" in config.json.
 9. In the 'Filter' box, enter oauth2/iframe
 10. Several network calls will appear in the Dev Tools window. Click on the last iframe call.
 11. In the Headers tab, under Request Headers, copy the entire cookie (include the whole string which is several lines long and has many field/value pairs - do not include the cookie: name). This is your "cookie" in Nest_config.json.
