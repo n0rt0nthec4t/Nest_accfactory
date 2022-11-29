@@ -26,6 +26,44 @@ The accessory supports connection to Nest using a Nest account OR a Google (migr
 
 ## Configuration
 
+### Obtaining a Session Token for a Nest Account
+
+If you have a Nest account, you will need to obtain an access token from the Nest web app. Simply go to https://home.nest.com in your browser and log in. Once that's done, go to https://home.nest.com/session in your browser, and you will see a long string that looks like this:
+
+{"2fa_state":"enrolled","access_token":"XXX", ...}
+
+Simply set "SessionToken" in your Nest_config.json file to the value of "access_token" near the start of the string (the XXX), which will be a long sequence of letters, numbers and punctuation beginning with b. There may be other keys labelled access_token further along in the string - please ignore these.
+
+**Do not log out of home.nest.com, as this will invalidate your credentials. Just close the browser tab**
+
+### Obtaining a Google cookie token for a Google Account
+
+Google Accounts are configured using the "GoogleToken" object in Nest_config.json, which contains two fields, "issueToken" and "cookie", which looks like this:
+
+```
+      "GoogleToken": {
+        "issueToken": "https://accounts.google.com/o/oauth2/iframerpc?action=issueToken...",
+        "cookie": "..."
+      },
+```
+      
+The values of "issueToken" and "cookies" are specific to your Google Account. To get them, follow these steps (only needs to be done once, as long as you stay logged into your Google Account).
+
+1. Open a Chrome browser tab in Incognito Mode (or clear your cache).
+2. Open Developer Tools (View/Developer/Developer Tools).
+3. Click on 'Network' tab. Make sure 'Preserve Log' is checked.
+4. In the 'Filter' box, enter issueToken
+5. Go to home.nest.com, and click 'Sign in with Google'. Log into your account.
+6. One network call (beginning with iframerpc) will appear in the Dev Tools window. Click on it.
+7. In the Headers tab, under General, copy the entire Request URL (beginning with https://accounts.google.com). This is your "issueToken" in config.json.
+9. In the 'Filter' box, enter oauth2/iframe
+10. Several network calls will appear in the Dev Tools window. Click on the last iframe call.
+11. In the Headers tab, under Request Headers, copy the entire cookie (include the whole string which is several lines long and has many field/value pairs - do not include the cookie: name). This is your "cookie" in Nest_config.json.
+
+**Do not log out of home.nest.com, as this will invalidate your credentials. Just close the browser tab**
+
+#### Sample Nest_config.json
+
 Nest_config.json is the configuration file where various options can be. An example of a basic configuration is below
 
 ```
@@ -66,6 +104,8 @@ An advanced configuration example is below
     },
 }
 ```
+
+### Configuration Options
 
 The options available are within the configuration file are listed below. Some of these options can also be on specific devices only
 
