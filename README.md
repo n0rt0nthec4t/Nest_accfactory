@@ -142,6 +142,7 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                            |
 |------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| v0.1.1           | Minor code fixes.                                                                                                                  |
 | v0.1.0           | Removes Google refresh token method as nolonger supported. Switches to Google cookie method                                        |
 | v0.0.9           | Major code rewrite for Nest accessories                                                                                            |
 |                  | Live streaming for cameras hardcoded to use "copy" for H264 encoder                                                                |
