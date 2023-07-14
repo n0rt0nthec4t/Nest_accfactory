@@ -109,23 +109,24 @@ An advanced configuration example is below
 
 The options available are within the configuration file are listed below. Some of these options can also be on specific devices only
 
-| Option            | Values                  | Description                                                                               | Global/Local |
-|-------------------|-------------------------|-------------------------------------------------------------------------------------------|--------------|
-| GoogleToken       |                         | Google cookie token object {"issuetoken": "xxx", "cookie": "xxx" }                        | global       |
-| SessionToken      |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
-| EveApp            | true, false             | Integration with Evehome App. Default is true                                             | global/local |
-| Weather           | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
-| Debug             | true, false             | Turns debugging on or off. Default is off                                                 | global       |
-| mDNS              | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is bonjour                                        | global       |
-| HKSV              | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras. Default is off.           | global/local |
-| HKSVPreBuffer     | seconds or milliseconds | Amount of time the pre-buffer for HomeKit Secure Video holds data. Default is 15 seconds  | global/local |
-| H264Encoder       | copy, libx264, h264_omx | H264 encoder ffmpeg used for both live video and HKSV recording                           | global/local |
-| H264EncoderLive   | copy, libx264, h264_omx | H264 encoder ffmpeg used for live video. Default is copy                                  | global/local |
-| H264EncoderRecord | copy, libx264, h264_omx | H264 encoder ffmpeg used for HKSV recording. Default is libx264                           | global/local |
-| MotionCooldown    | seconds or milliseconds | Ignore motion detection for this time once triggered. Default is 1 minute                 | global/local |
-| PersonCooldown    | seconds or milliseconds | Ignore person detection for this time once triggered (Non HKSV only) Default is 2 minutes | global/local |
-| DoorbellCooldown  | seconds or milliseconds | Ignore doorbell button pressed for this time once triggered Default is 1 minute           | global/local |
-| Exclude           | true, false             | Exclude a device                                                                          | local        |
+| Option                     | Values                  | Description                                                                               | Global/Local |
+|----------------------------|-------------------------|-------------------------------------------------------------------------------------------|--------------|
+| GoogleToken                |                         | Google cookie token object {"issuetoken": "xxx", "cookie": "xxx" }                        | global       |
+| SessionToken               |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
+| EveApp                     | true, false             | Integration with Evehome App. Default is true                                             | global/local |
+| Weather                    | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
+| Debug                      | true, false             | Turns debugging on or off. Default is off                                                 | global       |
+| mDNS                       | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is bonjour                                        | global       |
+| HKSV                       | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras. Default is off.           | global/local |
+| HKSVPreBuffer              | seconds or milliseconds | Amount of time the pre-buffer for HomeKit Secure Video holds data. Default is 15 seconds  | global/local |
+| H264Encoder                | copy, libx264, h264_omx | H264 encoder ffmpeg used for both live video and HKSV recording                           | global/local |
+| H264EncoderLive            | copy, libx264, h264_omx | H264 encoder ffmpeg used for live video. Default is copy                                  | global/local |
+| H264EncoderRecord          | copy, libx264, h264_omx | H264 encoder ffmpeg used for HKSV recording. Default is libx264                           | global/local |
+| MotionCooldown             | seconds or milliseconds | Ignore motion detection for this time once triggered. Default is 1 minute                 | global/local |
+| PersonCooldown             | seconds or milliseconds | Ignore person detection for this time once triggered (Non HKSV only) Default is 2 minutes | global/local |
+| DoorbellCooldown           | seconds or milliseconds | Ignore doorbell button pressed for this time once triggered Default is 1 minute           | global/local |
+| Exclude                    | true, false             | Exclude a device or all devices by default if used as a globl option                      | global/local |
+| Option.indoor_chime_switch | true, false             | Exposes a switch in HomeKIt to disable/enable indoor chime on Nest Hello. Default is false| local        |
 
 ## HomeKit Pairing
 Once configured and running, any non-excluded devices can be paired in HomeKit using the pairing code **031-45-154**
@@ -140,22 +141,24 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 ## Changelog
 
-| Version          | Changes                                                                                                                            |
-|------------------|------------------------------------------------------------------------------------------------------------------------------------|
-| v0.1.1           | Minor code fixes.                                                                                                                  |
-| v0.1.0           | Removes Google refresh token method as nolonger supported. Switches to Google cookie method                                        |
-| v0.0.9           | Major code rewrite for Nest accessories                                                                                            |
-|                  | Live streaming for cameras hardcoded to use "copy" for H264 encoder                                                                |
-|                  | Fixes to maintain connection for HKSV streaming from Nest                                                                          |
-|                  | Known issue: Audio sync for HKSV recording maybe out due to Nest's use of adaptive framerates. Investigating work around           |
-| v0.0.8           | H264Encoder config option changes. Will use H264EncoderLive and H264EncoderRecord                                                  |
-| v0.0.7           | Minor code fixes                                                                                                                   |
-| v0.0.6           | H264Encoder option can also be specified for a specific doorbell/camera.                                                           |
-| v0.0.5           | New option to enabled/disable integration with Eve App in configuration                                                            |
-|                  | Timestamps in debugging logs                                                                                                       | 
-|                  | Minor code fixes                                                                                                                   |
-| v0.0.4           | Minor code fixes                                                                                                                   |
-| v0.0.3           | Improvements to maintaining network connection for HKSV buffering                                                                  |
-|                  | New option to have a "virtual" weather station using Nest weather data. Enabled in configuration                                   |
-| v0.0.1           | Initial release to this repository                                                                                                 |
+| Version          | Changes                                                                                                                                      |
+|------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| v0.1.2           | Code updates and fixed                                                                                                                       |
+|                  | Added option to enable HomeKit switch to silence Nest Hello indoor chiming                                                                   |
+| v0.1.1           | Minor code fixes.                                                                                                                            |
+| v0.1.0           | Removes Google refresh token method as nolonger supported. Switches to Google cookie method                                                  |
+| v0.0.9           | Major code rewrite for Nest accessories                                                                                                      |
+|                  | Live streaming for cameras hardcoded to use "copy" for H264 encoder                                                                          |
+|                  | Fixes to maintain connection for HKSV streaming from Nest                                                                                    |
+|                  | Known issue: Audio sync for HKSV recording maybe out due to Nest's use of adaptive framerates. Investigating work around                     |
+| v0.0.8           | H264Encoder config option changes. Will use H264EncoderLive and H264EncoderRecord                                                            |
+| v0.0.7           | Minor code fixes                                                                                                                             |
+| v0.0.6           | H264Encoder option can also be specified for a specific doorbell/camera.                                                                     |
+| v0.0.5           | New option to enabled/disable integration with Eve App in configuration                                                                      |
+|                  | Timestamps in debugging logs                                                                                                                 |
+|                  | Minor code fixes                                                                                                                             |
+| v0.0.4           | Minor code fixes                                                                                                                             |
+| v0.0.3           | Improvements to maintaining network connection for HKSV buffering                                                                            |
+|                  | New option to have a "virtual" weather station using Nest weather data. Enabled in configuration                                             |
+| v0.0.1           | Initial release to this repository                                                                                                           |
 
