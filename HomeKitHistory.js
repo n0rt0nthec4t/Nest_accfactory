@@ -4,8 +4,9 @@
 // todo (EveHome integration)
 // -- get history to show for motion when attached to a smoke sensor
 // -- get history to show for smoke when attached to a smoke sensor
-// -- thermo schedules/additonal characteris
+// -- thermo valve protection
 // -- Eve Degree/Weather2 history
+// -- Eve Water guard history
 //
 // done
 // -- initial support for importing our history into EveHome
@@ -21,15 +22,15 @@
 // -- Debugging option
 // -- refactor class definition
 // -- fix for thermo history target temperatures
+// -- thermo schedules
+// -- updated history logging for outlet services
+// -- inital support for Eve Water Guard
 //
-// Version 28/6/2022
+// Version 3/7/2023
 // Mark Hulskamp
 
 // Define HAP-NodeJS requirements
-var HAPNodeJS = require("hap-nodejs");
-var Service = HAPNodeJS.Service;
-var Characteristic = HAPNodeJS.Characteristic;
-var HAPStorage = HAPNodeJS.HAPStorage;
+var HAP = require("hap-nodejs");
 
 // Define nodejs module requirements
 var util = require("util");
@@ -40,27 +41,27 @@ const MAX_HISTORY_SIZE = 16384; // 16k entries
 const EPOCH_OFFSET = 978307200; // Seconds since 1/1/1970 to 1/1/2001
 const EVEHOME_MAX_STREAM = 11;  // Maximum number of history events we can stream to EveHome at once
 
+const DAYSOFWEEK = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
 
 // Create the history object
 class HomeKitHistory {
 	constructor(HomeKitAccessory, optionalParams) {
+        this.maxEntries = MAX_HISTORY_SIZE; // used for rolling history. if 0, means no rollover
+        this.location = "";
+        this.debug = false; // No debugging by default
 
         if (typeof (optionalParams) === "object") {
             this.maxEntries = optionalParams.maxEntries || MAX_HISTORY_SIZE; // used for rolling history. if 0, means no rollover
             this.location = optionalParams.location || "";
             this.debug = optionalParams.debug || false;
         }
-        else {
-            this.maxEntries = MAX_HISTORY_SIZE; // used for rolling history. if 0, means no rollover
-            this.location = "";
-            this.debug = false; // No debugging by default
-        }
 
         // Setup HomeKitHistory storage using HAP-NodeJS persist location
         // can be overridden by passing in location optional parameter
         this.storageKey = util.format("History.%s.json", HomeKitAccessory.username.replace(/:/g, "").toUpperCase());
 
-        this.storage = HAPStorage.storage();  // Load storage from HAP-NodeJS. We'll use it's persist folder for storing history files
+        this.storage = HAP.HAPStorage.storage();  // Load storage from HAP-NodeJS. We'll use it's persist folder for storing history files
 		this.historyData = this.storage.getItem(this.storageKey);
 		if (typeof this.historyData != "object") {
             // Getting storage key didnt return an object, we'll assume no history present, so start new history for this accessory
@@ -73,8 +74,6 @@ class HomeKitHistory {
         if (this.maxEntries != 0 && this.historyData.next >= this.maxEntries) {
             this.rolloverHistory();
         }
-
-		return this;	// Return object to our service
 	}
 
 
@@ -100,28 +99,28 @@ class HomeKitHistory {
             timegap = 0; // Zero minimum time gap between entries
         }
         switch (service.UUID) {
-            case Service.GarageDoorOpener.UUID : {
+            case HAP.Service.GarageDoorOpener.UUID : {
                 // Garage door history
                 // entry.time => unix time in seconds
                 // entry.status => 0 = closed, 1 = open
                 historyEntry.status = entry.status;
                 if (typeof entry.restart != "undefined") historyEntry.restart = entry.restart;
-                this.__addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
+                this.#addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
                 break;
             }
 
-            case Service.MotionSensor.UUID : {
+            case HAP.Service.MotionSensor.UUID : {
                 // Motion sensor history
                 // entry.time => unix time in seconds
                 // entry.status => 0 = motion cleared, 1 = motion detected
                 historyEntry.status = entry.status;
                 if (typeof entry.restart != "undefined") historyEntry.restart = entry.restart;
-                this.__addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
+                this.#addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
                 break;
             }
 
-            case Service.Window.UUID :
-            case Service.WindowCovering.UUID : {
+            case HAP.Service.Window.UUID :
+            case HAP.Service.WindowCovering.UUID : {
                 // Window and Window Covering history
                 // entry.time => unix time in seconds
                 // entry.status => 0 = closed, 1 = open
@@ -129,12 +128,12 @@ class HomeKitHistory {
                 historyEntry.status = entry.status;
                 historyEntry.position = entry.position;
                 if (typeof entry.restart != "undefined") historyEntry.restart = entry.restart;
-                this.__addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
+                this.#addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
                 break;
             }
 
-            case Service.HeaterCooler.UUID :
-            case Service.Thermostat.UUID : {
+            case HAP.Service.HeaterCooler.UUID :
+            case HAP.Service.Thermostat.UUID : {
                 // Thermostat and Heater/Cooler history
                 // entry.time => unix time in seconds
                 // entry.status => 0 = off, 1 = fan, 2 = heating, 3 = cooling, 4 = dehumidifying
@@ -146,13 +145,13 @@ class HomeKitHistory {
                 historyEntry.target = entry.target;
                 historyEntry.humidity = entry.humidity;
                 if (typeof entry.restart != "undefined") historyEntry.restart = entry.restart;
-                this.__addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
+                this.#addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
                 break;
             }
 
-            case Service.EveAirPressureSensor.UUID :
-            case Service.AirQualitySensor.UUID :
-            case Service.TemperatureSensor.UUID : {
+            case HAP.Service.EveAirPressureSensor.UUID :
+            case HAP.Service.AirQualitySensor.UUID :
+            case HAP.Service.TemperatureSensor.UUID : {
                 // Temperature sensor history
                 // entry.time => unix time in seconds
                 // entry.temperature => current temperature in degress C
@@ -183,11 +182,11 @@ class HomeKitHistory {
                 historyEntry.voc = entry.voc;
                 historyEntry.pressure = entry.pressure;
                 if (typeof entry.restart != "undefined") historyEntry.restart = entry.restart;
-                this.__addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
+                this.#addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
                 break;
             }
 
-            case Service.Valve.UUID : {
+            case HAP.Service.Valve.UUID : {
                 // Water valve history
                 // entry.time => unix time in seconds
                 // entry.status => 0 = valve closed, 1 = valve opened
@@ -197,51 +196,63 @@ class HomeKitHistory {
                 historyEntry.water = entry.water;
                 historyEntry.duration = entry.duration;
                 if (typeof entry.restart != "undefined") historyEntry.restart = entry.restart;
-                this.__addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
+                this.#addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
                 break;
             }
 
-            case Characteristic.WaterLevel.UUID : {
+            case HAP.Characteristic.WaterLevel.UUID : {
                 // Water level history
                 // entry.time => unix time in seconds
                 // entry.level => water level as percentage
                 historyEntry.level = entry.level;
                 if (typeof entry.restart != "undefined") historyEntry.restart = entry.restart;
-                this.__addEntry(service.UUID, 0, entry.time, timegap, historyEntry); // Characteristics dont have sub type, so we'll use 0 for it
+                this.#addEntry(service.UUID, 0, entry.time, timegap, historyEntry); // Characteristics dont have sub type, so we'll use 0 for it
                 break;
             }
 
-            case Service.Outlet.UUID : {
-                // Power outlet
+            case HAP.Service.LeakSensor.UUID : {
+                // Leak sensor history
+                // entry.time => unix time in seconds
+                // entry.status => 0 = no leak, 1 = leak
+                historyEntry.status = entry.status;
+                if (typeof entry.restart != "undefined") historyEntry.restart = entry.restart;
+                this.#addEntry(service.UUID, 0, entry.time, timegap, historyEntry); // Characteristics dont have sub type, so we'll use 0 for it
+                break;
+            }
+
+            case HAP.Service.Outlet.UUID : {
+                // Power outlet history
                 // entry.time => unix time in seconds
                 // entry.status => 0 = off, 1 = on
-                // entry.volts  => current voltage in Vs
-                // entry.watts  => current consumption in W's
+                // entry.volts  => voltage in Vs
+                // entry.watts  => watts in W's
+                // entry.amps  => current in A's
                 historyEntry.status = entry.status;
                 historyEntry.volts = entry.volts;
                 historyEntry.watts = entry.watts;
+                historyEntry.amps = entry.amps;
                 if (typeof entry.restart != "undefined") historyEntry.restart = entry.restart;
-                this.__addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
+                this.#addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
                 break;
             }
 
-            case Service.Doorbell.UUID : {
+            case HAP.Service.Doorbell.UUID : {
                 // Doorbell press history
                 // entry.time => unix time in seconds
                 // entry.status => 0 = not pressed, 1 = doorbell pressed
                 historyEntry.status = entry.status;
                 if (typeof entry.restart != "undefined") historyEntry.restart = entry.restart;
-                this.__addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
+                this.#addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
                 break;
             }
 
-            case Service.SmokeSensor.UUID : {
+            case HAP.Service.SmokeSensor.UUID : {
                 // Smoke sensor history
                 // entry.time => unix time in seconds
                 // entry.status => 0 = smoke cleared, 1 = smoke detected
                 historyEntry.status = entry.status;
                 if (typeof historyEntry.restart != "undefined") historyEntry.restart = entry.restart;
-                this.__addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
+                this.#addEntry(service.UUID, service.subtype, entry.time, timegap, historyEntry);
                 break;
             }
         }
@@ -265,11 +276,11 @@ class HomeKitHistory {
         this.historyData.data.splice(this.maxEntries, this.historyData.data.length);
         this.historyData.rollover = Math.floor(new Date() / 1000);
         this.historyData.next = 0;
-        this.__updateHistoryTypes();
+        this.#updateHistoryTypes();
         this.storage.setItem(this.storageKey, this.historyData);
     }
 
-    __addEntry(type, sub, time, timegap, entry) {
+    #addEntry(type, sub, time, timegap, entry) {
         var historyEntry = {};
         var recordEntry = true; // always record entry unless we dont need to 
         historyEntry.time = time;
@@ -415,7 +426,7 @@ class HomeKitHistory {
         return tempHistory.length;
     }
 
-    __updateHistoryTypes() {
+    #updateHistoryTypes() {
         // Builds the known history types and last entry in current history data
         // Might be time consuming.....
         this.historyData.types = [];
@@ -445,100 +456,101 @@ class HomeKitHistory {
 
         if (typeof this.EveHome == "undefined" || (this.EveHome && this.EveHome.hasOwnProperty("service") == false)) {
             switch (service.UUID) {
-                case Service.Door.UUID :
-                case Service.Window.UUID :
-                case Service.GarageDoorOpener.UUID : {
+                case HAP.Service.Door.UUID :
+                case HAP.Service.Window.UUID :
+                case HAP.Service.GarageDoorOpener.UUID : {
                     // treat these as EveHome Door but with inverse status for open/closed
-                    var historyService = HomeKitAccessory.addService(Service.EveHomeHistory, "", 1);
+                    var historyService = HomeKitAccessory.addService(HAP.Service.EveHomeHistory, "", 1);
                     var tempHistory = this.getHistory(service.UUID, service.subtype);
                     var historyreftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
 
                     this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "door", fields: "0601", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
-                    service.addCharacteristic(Characteristic.EveLastActivation);
-                    service.addCharacteristic(Characteristic.EveOpenDuration);
-                    service.addCharacteristic(Characteristic.EveClosedDuration);
-                    service.addCharacteristic(Characteristic.EveTimesOpened);
+                    service.addCharacteristic(HAP.Characteristic.EveLastActivation);
+                    service.addCharacteristic(HAP.Characteristic.EveOpenDuration);
+                    service.addCharacteristic(HAP.Characteristic.EveClosedDuration);
+                    service.addCharacteristic(HAP.Characteristic.EveTimesOpened);
 
                     // Setup initial values and callbacks for charateristics we are using
-                    service.getCharacteristic(Characteristic.EveTimesOpened).updateValue(this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1}));   // Count of entries based upon status = 1, opened
-                    service.getCharacteristic(Characteristic.EveLastActivation).updateValue(this.__EveLastEventTime()); // time of last event in seconds since first event
-                    service.getCharacteristic(Characteristic.EveTimesOpened).on("get", (callback) => {
+                    service.updateCharacteristic(HAP.Characteristic.EveTimesOpened, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1}));   // Count of entries based upon status = 1, opened
+                    service.updateCharacteristic(HAP.Characteristic.EveLastActivation, this.#EveLastEventTime()); // time of last event in seconds since first event
+                    
+                    service.getCharacteristic(HAP.Characteristic.EveTimesOpened).on("get", (callback) => {
                         callback(null, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1}));  // Count of entries based upon status = 1, opened
                     });
-                    service.getCharacteristic(Characteristic.EveLastActivation).on("get", (callback) => {
-                        callback(null, this.__EveLastEventTime());  // time of last event in seconds since first event
-                    }); 
+                    
+                    service.getCharacteristic(HAP.Characteristic.EveLastActivation).on("get", (callback) => {
+                        callback(null, this.#EveLastEventTime());  // time of last event in seconds since first event
+                    });
+
+                    this.#outputLogging("History", false, "History linked to EveHome app as '%s'", "Eve Door & Window");
                     break;
                 }
 
-                case Service.ContactSensor.UUID : {
+                case HAP.Service.ContactSensor.UUID : {
                     // treat these as EveHome Door
-                    var historyService = HomeKitAccessory.addService(Service.EveHomeHistory, "", 1);
+                    var historyService = HomeKitAccessory.addService(HAP.Service.EveHomeHistory, "", 1);
                     var tempHistory = this.getHistory(service.UUID, service.subtype);
                     var historyreftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
 
                     this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "contact", fields: "0601", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
-                    service.addCharacteristic(Characteristic.EveLastActivation);
-                    service.addCharacteristic(Characteristic.EveOpenDuration);
-                    service.addCharacteristic(Characteristic.EveClosedDuration);
-                    service.addCharacteristic(Characteristic.EveTimesOpened);
+                    service.addCharacteristic(HAP.Characteristic.EveLastActivation);
+                    service.addCharacteristic(HAP.Characteristic.EveOpenDuration);
+                    service.addCharacteristic(HAP.Characteristic.EveClosedDuration);
+                    service.addCharacteristic(HAP.Characteristic.EveTimesOpened);
 
                     // Setup initial values and callbacks for charateristics we are using
-                    service.getCharacteristic(Characteristic.EveTimesOpened).updateValue(this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1}));   // Count of entries based upon status = 1, opened
-                    service.getCharacteristic(Characteristic.EveLastActivation).updateValue(this.__EveLastEventTime()); // time of last event in seconds since first event
-                    service.getCharacteristic(Characteristic.EveTimesOpened).on("get", (callback) => {
+                    service.updateCharacteristic(HAP.Characteristic.EveTimesOpened, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1}));   // Count of entries based upon status = 1, opened
+                    service.updateCharacteristic(HAP.Characteristic.EveLastActivation, this.#EveLastEventTime()); // time of last event in seconds since first event
+                    
+                    service.getCharacteristic(HAP.Characteristic.EveTimesOpened).on("get", (callback) => {
                         callback(null, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1})); // Count of entries based upon status = 1, opened
                     });
-                    service.getCharacteristic(Characteristic.EveLastActivation).on("get", (callback) => {
-                        callback(null, this.__EveLastEventTime());  // time of last event in seconds since first event
-                    });  
+                    
+                    service.getCharacteristic(HAP.Characteristic.EveLastActivation).on("get", (callback) => {
+                        callback(null, this.#EveLastEventTime());  // time of last event in seconds since first event
+                    });
+
+                    this.#outputLogging("History", false, "History linked to EveHome app as '%s'", "Eve Door & Window");
                     break;
                 }
 
-                case Service.WindowCovering.UUID : 
+                case HAP.Service.WindowCovering.UUID : 
                 {
                     // Treat as Eve MotionBlinds
-                    var historyService = HomeKitAccessory.addService(Service.EveHomeHistory, "", 1);
+                    var historyService = HomeKitAccessory.addService(HAP.Service.EveHomeHistory, "", 1);
                     var tempHistory = this.getHistory(service.UUID, service.subtype);
                     var historyreftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
                     
-                    this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "blind", fields: "1802 1901", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
-                    service.addCharacteristic(Characteristic.EveGetConfiguration);
-                    service.addCharacteristic(Characteristic.EveSetConfiguration);
+                    this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "blind", fields: "1702 1802 1901", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
+                    service.addCharacteristic(HAP.Characteristic.EveGetConfiguration);
+                    service.addCharacteristic(HAP.Characteristic.EveSetConfiguration);
 
                     //17      CurrentPosition
                     //18      TargetPosition
                     //19      PositionState
 
-                                /*   for (var index = 30; index < 115; index++) {
-    
-                        uuid = "E863F1" + numberToEveHexString(index, 2) + "-079E-48FF-8F27-9C2605A29F52";
-                    eval(`Characteristic.EveTest`+ index + ` () {Characteristic.call(this, "Eve Test "+ index, uuid); this.setProps({format: Characteristic.Formats.DATA,perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]});this.value = this.getDefaultValue();}`);
-                    util.inherits(eval(`Characteristic.EveTest`+ index), Characteristic);
-                    eval(`Characteristic.EveTest`+ index + `.UUID = uuid`);
-                    service.addCharacteristic(eval(`Characteristic.EveTest`+ index));
-                    console.log(uuid)
-                    
+               
+                  /*  var index = 80;
+                    var uuid = "E863F1" + numberToEveHexString(index, 2) + "-079E-48FF-8F27-9C2605A29F52".toLocaleUpperCase();
+                    eval(`HAP.Characteristic.EveTest`+ index + ` =function() {HAP.Characteristic.call(this, "Eve Test "+ index, uuid); this.setProps({format: HAP.Characteristic.Formats.DATA,perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]});this.value = this.getDefaultValue();}`);
+                    util.inherits(eval(`HAP.Characteristic.EveTest`+ index), HAP.Characteristic);
+                    eval(`HAP.Characteristic.EveTest`+ index + `.UUID = uuid`);
+                    if (service.testCharacteristic(eval(`HAP.Characteristic.EveTest`+ index)) == false) {
+                        service.addCharacteristic(eval(`HAP.Characteristic.EveTest`+ index));
+                        console.log(uuid)
                     } */
-                
-                    this.productid = 0;
 
-                    service.getCharacteristic(Characteristic.EveGetConfiguration).on("get", (callback) => {
+
+                    service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
                         var value = util.format(
-                            "0002 %s 0302 %s 9b04 %s 1e02 %s 0c",
-                            numberToEveHexString(this.productid, 4),
-                            numberToEveHexString(1300, 4),  // firmware version (build xxxx)
-                            numberToEveHexString(Math.floor(new Date() / 1000), 8), // "now" time
-                            numberToEveHexString(this.productid, 4));
-        
-                            console.log("EveGetConfiguration", value);
-
-                            this.productid = this.productid + 1;
-
+                            "0002 5500 0302 %s 9b04 %s 1e02 5500 0c",
+                            numberToEveHexString(2979, 4),  // firmware version (build xxxx)
+                            numberToEveHexString(Math.floor(new Date() / 1000), 8)); // "now" time
+     
                             callback(null, encodeEveData(value));
                     });
 
-                    service.getCharacteristic(Characteristic.EveSetConfiguration).on("set", (value, callback) => {
+                    service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
                         var processedData = {};
                         var valHex = decodeEveData(value);
                         var index = 0;
@@ -573,17 +585,27 @@ class HomeKitHistory {
 
                                 case "f3" : {
                                     // move window covering to set limits
-                                    // data
-                                    // 01c800 move up single press
-                                    // 02c800 move down single press    
-                                    // 01d007 move up hold press
-                                    // 02d007 move down hold press
-                                    // 030000 stop from hold press
+                                    // xxyyyy - xx = move command (01 = up, 02 = down, 03 = stop), yyyy - distance/time/ticks/increment to move??
+                                    var moveCommand = data.substring(0, 2);
+                                    var moveAmount = EveHexStringToNumber(data.substring(2));
+
+                                    console.log("move", moveCommand, moveAmount);
+
+                                    var currentPosition = service.getCharacteristic(HAP.Characteristic.CurrentPosition).value;
+                                    if (data == "015802") {
+                                        currentPosition = currentPosition + 1;
+                                    }
+                                    if (data == "025802") {
+                                        currentPosition = currentPosition - 1;
+                                    }
+                                    console.log("move", currentPosition, data)
+                                    service.updateCharacteristic(HAP.Characteristic.CurrentPosition, currentPosition);
+                                    service.updateCharacteristic(HAP.Characteristic.TargetPosition, currentPosition);
                                     break;
                                 }
 
                                 default : {
-                                    this.debug && console.debug(getTimestamp() + " [HISTORY] Unknown Eve MotionBlinds command '%s' with data '%s'", command, data);
+                                    this.#outputLogging("History", true,  "Unknown Eve MotionBlinds command '%s' with data '%s'", command, data);
                                     break;
                                 }
                             }
@@ -591,13 +613,15 @@ class HomeKitHistory {
                         }
                         callback();
                     });
+
+                    this.#outputLogging("History", false, "History linked to EveHome app as '%s'", "Eve Motion Blinds");
                     break;
                 }
 
-                case Service.HeaterCooler.UUID :
-                case Service.Thermostat.UUID : {
+                case HAP.Service.HeaterCooler.UUID :
+                case HAP.Service.Thermostat.UUID : {
                     // treat these as EveHome Thermo
-                    var historyService = HomeKitAccessory.addService(Service.EveHomeHistory, "", 1);
+                    var historyService = HomeKitAccessory.addService(HAP.Service.EveHomeHistory, "", 1);
                     var tempHistory = this.getHistory(service.UUID, service.subtype);
                     var historyreftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
 
@@ -610,67 +634,29 @@ class HomeKitHistory {
                     this.EveThermoPersist.tempoffset = optionalParams.hasOwnProperty("EveThermo_tempoffset") ? optionalParams.EveThermo_tempoffset: -2.5; // Temperature offset. default -2.5
                     this.EveThermoPersist.enableschedule = optionalParams.hasOwnProperty("EveThermo_enableschedule") ? optionalParams.EveThermo_enableschedule : false; // Schedules on/off
                     this.EveThermoPersist.pause = optionalParams.hasOwnProperty("EveThermo_pause") ? optionalParams.EveThermo_pause : false; // Paused on/off
-                    this.EveThermoPersist.away = optionalParams.hasOwnProperty("EveThermo_away") ? optionalParams.EveThermo_away : false; // Vacation status - disabled ie: Home
-                    this.EveThermoPersist.awaytemp = optionalParams.hasOwnProperty("EveThermo_awaytemp") ? optionalParams.EveThermo_awaytemp : 0xff; // Vacation temp disabled
-                    this.EveThermoPersist.command1a = optionalParams.hasOwnProperty("EveThermo_command1a") ? optionalParams.EveThermo_command1a : ""; 
-                    this.EveThermoPersist.commandf4 = optionalParams.hasOwnProperty("EveThermo_commandf4") ? optionalParams.EveThermo_commandf4 : "";
-                    this.EveThermoPersist.commandfa = optionalParams.hasOwnProperty("EveThermo_commandfa") ? optionalParams.EveThermo_commandfa : "";
+                    this.EveThermoPersist.vacation = optionalParams.hasOwnProperty("EveThermo_vacation") ? optionalParams.EveThermo_vacation : false; // Vacation status - disabled ie: Home
+                    this.EveThermoPersist.vacationtemp = optionalParams.hasOwnProperty("EveThermo_vacationtemp") ? optionalParams.EveThermo_vactiontemp : null; // Vacation temp disabled if null
+                    this.EveThermoPersist.datetime = optionalParams.hasOwnProperty("EveThermo_datetime") ? optionalParams.EveThermo_datetime : new Date(); // Current date/time
+                    this.EveThermoPersist.programs = optionalParams.hasOwnProperty("EveThermo_programs") ? optionalParams.EveThermo_programs : [];
                     
-                    service.addCharacteristic(Characteristic.EveValvePosition);   // Needed to show history for thermostat heating modes (valve position)
-                    service.addCharacteristic(Characteristic.EveFirmware);
-                    service.addCharacteristic(Characteristic.EveProgramData);
-                    service.addCharacteristic(Characteristic.EveProgramCommand);
-                    if (service.testCharacteristic(Characteristic.StatusActive) === false) service.addCharacteristic(Characteristic.StatusActive);
-                    if (service.testCharacteristic(Characteristic.CurrentTemperature) === false) service.addCharacteristic(Characteristic.CurrentTemperature);
-                    if (service.testCharacteristic(Characteristic.TemperatureDisplayUnits) === false) service.addCharacteristic(Characteristic.TemperatureDisplayUnits);
-                    if (service.testCharacteristic(Characteristic.LockPhysicalControls) == false) service.addCharacteristic(Characteristic.LockPhysicalControls); // Allows childlock toggle to be displayed in Eve App
+                    service.addCharacteristic(HAP.Characteristic.EveValvePosition);   // Needed to show history for thermostat heating modes (valve position)
+                    service.addCharacteristic(HAP.Characteristic.EveFirmware);
+                    service.addCharacteristic(HAP.Characteristic.EveProgramData);
+                    service.addCharacteristic(HAP.Characteristic.EveProgramCommand);
+                    if (service.testCharacteristic(HAP.Characteristic.StatusActive) === false) service.addCharacteristic(HAP.Characteristic.StatusActive);
+                    if (service.testCharacteristic(HAP.Characteristic.CurrentTemperature) === false) service.addCharacteristic(HAP.Characteristic.CurrentTemperature);
+                    if (service.testCharacteristic(HAP.Characteristic.TemperatureDisplayUnits) === false) service.addCharacteristic(HAP.Characteristic.TemperatureDisplayUnits);
+                    if (service.testCharacteristic(HAP.Characteristic.LockPhysicalControls) == false) service.addCharacteristic(HAP.Characteristic.LockPhysicalControls); // Allows childlock toggle to be displayed in Eve App
 
-                    service.getCharacteristic(Characteristic.EveFirmware).updateValue(encodeEveData(util.format("2c %s be", numberToEveHexString(this.EveThermoPersist.firmware, 4))));  // firmware version (build xxxx)));
+                    // Setup initial values and callbacks for charateristics we are using
+                    service.updateCharacteristic(HAP.Characteristic.EveFirmware, encodeEveData(util.format("2c %s be", numberToEveHexString(this.EveThermoPersist.firmware, 4))));  // firmware version (build xxxx)));
                     
-                    // TODO - before enabling below need to workout:
-                    //          - mode graph to show
-                    //          - temperature unit setting
-                    //          - thermo 2020??
-                    service.getCharacteristic(Characteristic.EveProgramData).on("get", (callback) => {
-                        // commands
-                        // 11 - valve protection on/off - TODO
-                        // 12 - temp offset
-                        // 13 - schedules enabled/disabled
-                        // 16 - Window/Door open status
-                        //          100000 - open
-                        //          000000 - close
-                        // 14 - installation status
-                        //          c0,c8 = ok
-                        //          c1,c6,c9 = in-progress
-                        //          c2,c3,c4,c5 = error on removal
-                        //          c7 = not attached
-                        // 19 - vacation mode
-                        //          00ff - off
-                        //          01 + "away temp" - enabled with vacation temp
-                        // f4 - temperatures
-                        // fa - programs for week
-                        // 1a - default day program
-
-                        if (typeof optionalParams.GetCommand == "function") this.EveThermo = optionGetFunction(this.EveThermoPersist); // Fill in details we might want to be dynamic
-
-                        // Encode the temperature offset into an unsigned value
-                        var tempOffset = this.EveThermoPersist.tempoffset * 10;
-                        if (tempOffset < 127) tempOffset = tempOffset + 256;
-
-                        var value = util.format(
-                            "12%s 13%s 14%s 19%s %s %s %s",
-                            numberToEveHexString(tempOffset, 2),
-                            this.EveThermoPersist.enableschedule == true ? "01" : "00",
-                            service.getCharacteristic(Characteristic.StatusActive).value == true || optionalParams.EveThermo_attached == true ? "c0" : "c7",
-                            this.EveThermoPersist.away == true ? "01" + numberToEveHexString(this.EveThermoPersist.awaytemp * 2, 2) : "00ff", // away status and temp
-                            this.EveThermoPersist.commandf4,
-                            this.EveThermoPersist.command1a,
-                            this.EveThermoPersist.commandfa);
-
-                        callback(null, encodeEveData(value));
+                    service.updateCharacteristic(HAP.Characteristic.EveProgramData, this.#EveThermoGetDetails(optionalParams.GetCommand));
+                    service.getCharacteristic(HAP.Characteristic.EveProgramData).on("get", (callback) => {
+                        callback(null, this.#EveThermoGetDetails(optionalParams.GetCommand));
                     });
 
-                    service.getCharacteristic(Characteristic.EveProgramCommand).on("set", (value, callback) => {
+                    service.getCharacteristic(HAP.Characteristic.EveProgramCommand).on("set", (value, callback) => {
                         var programs = [];
                         var scheduleTemps = [];
                         var processedData = {};
@@ -678,7 +664,6 @@ class HomeKitHistory {
                         var index = 0;
                         while (index < valHex.length) {
                             var command = valHex.substr(index, 2);
-                            console.log("eve therm", valHex)
                             index += 2; // skip over command value, and this is where data starts.
                             switch(command) {
                                 case "00" : {
@@ -750,28 +735,34 @@ class HomeKitHistory {
 
                                 case "19" : {
                                     // Vacation on/off, vacation temperature via HomeKit automation/scene
-                                    var awayStatus = valHex.substr(index, 2) == "01" ? true : false;
-                                    var awayTemp = parseInt(valHex.substr(index + 2, 2), 16) * 0.5;
-                                    this.EveThermoPersist.away = awayStatus;
-                                    this.EveThermoPersist.awaytemp = awayTemp;
-                                    processedData.away = {"status": this.EveThermoPersist.away, "temp": this.EveThermoPersist.awaytemp};
+                                    this.EveThermoPersist.vacation = valHex.substr(index, 2) == "01" ? true : false;
+                                    this.EveThermoPersist.vacationtemp = (valHex.substr(index, 2) == "01" ? parseInt(valHex.substr(index + 2, 2), 16) * 0.5 : null);
+                                    processedData.vacation = {"status": this.EveThermoPersist.vacation, "temp": this.EveThermoPersist.vacationtemp};
                                     index += 4;
                                     break;
                                 }
 
                                 case "f4" : {
                                     // Temperature Levels for schedule
-                                    this.EveThermoPersist.commandf4 = "f400" + valHex.substr(index, 6); // save the command string
-                                    var currentTemp = valHex.substr(index, 2) == "80" ? null : parseInt(valHex.substr(index, 2), 16) * 0.5;
+                                    var nowTemp = valHex.substr(index, 2) == "80" ? null : parseInt(valHex.substr(index, 2), 16) * 0.5;
                                     var ecoTemp = valHex.substr(index + 2, 2) == "80" ? null : parseInt(valHex.substr(index + 2, 2), 16) * 0.5;
                                     var comfortTemp = valHex.substr(index + 4, 2) == "80" ? null : parseInt(valHex.substr(index + 4, 2), 16) * 0.5;
                                     scheduleTemps = [ecoTemp, comfortTemp];
+                                    processedData.scheduleTemps = {"eco": ecoTemp, "comfort": comfortTemp};
                                     index += 6;
                                     break;
                                 }
 
                                 case "fc" : {
-                                    // Date/Time
+                                    // Date/Time mmhhDDMMYY
+                                    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                                    var minute = parseInt(valHex.substr(index, 2), 16);
+                                    var hour = parseInt(valHex.substr(index + 2, 2), 16);
+                                    var day = parseInt(valHex.substr(index + 4, 2), 16);
+                                    var month = parseInt(valHex.substr(index + 6, 2), 16);
+                                    var year = parseInt(valHex.substr(index + 8, 2), 16);
+                                    this.EveThermoPersist.datetime = new Date(months[month - 1] + " " + day + ", " + year + " " + hour + ":" + minute + ":00");
+                                    processedData.datetime = this.EveThermoPersist.datetime;
                                     index += 10;
                                     break;
                                 }       
@@ -779,8 +770,6 @@ class HomeKitHistory {
                                 case "fa" : {
                                     // Programs (week - mon, tue, wed, thu, fri, sat, sun)
                                     // index += 112;
-                                    this.EveThermoPersist.commandfa = command + valHex.substr(index, 112); // save the command string
-                                    var daysofweek = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
                                     for (var index2 = 0; index2 < 7; index2++) {
                                         var times = [];
                                         for (var index3 = 0; index3 < 4; index3++) {
@@ -807,13 +796,15 @@ class HomeKitHistory {
                                             }
                 
                                             if (start_offset != null && end_offset != null) {
-                                                times.push({"type" : "time", "offset": start_offset, "duration" : (end_offset - start_offset)});
+                                                times.push({"start": start_offset, "duration" : (end_offset - start_offset), "ecotemp" : scheduleTemps.eco, "comforttemp" : scheduleTemps.comfort});
                                             }
                                             index += 4;
                                         }
-                                        programs.push({"id": index2 + 1, "days": daysofweek[index2], "schedule": times, "temperature" : scheduleTemps});
+                                        programs.push({"id": (programs.length + 1), "days": DAYSOFWEEK[index2], "schedule": times });
                                     }
-                                    processedData.programs = programs;               
+
+                                    this.EveThermoPersist.programs = programs;
+                                    processedData.programs = this.EveThermoPersist.programs;           
                                     break;
                                 }
 
@@ -842,7 +833,7 @@ class HomeKitHistory {
                                 }
 
                                 default : {
-                                    this.debug && console.debug(getTimestamp() + " [HISTORY] Unknown Eve Thermo command '%s'", command);
+                                    this.#outputLogging("History", true,  "Unknown Eve Thermo command '%s'", command);
                                     break
                                 }
                             }
@@ -852,98 +843,104 @@ class HomeKitHistory {
                         if (typeof optionalParams.SetCommand == "function" && Object.keys(processedData).length != 0) optionalParams.SetCommand(processedData);
                         callback();
                     });
+
+                    this.#outputLogging("History", false, "History linked to EveHome app as '%s'", "Eve Thermo");
                     break;
                 }
 
-                case Service.EveAirPressureSensor.UUID : {
+                case HAP.Service.EveAirPressureSensor.UUID : {
                     // treat these as EveHome Weather (2015)
-                    var historyService = HomeKitAccessory.addService(Service.EveHomeHistory, "", 1);
+                    var historyService = HomeKitAccessory.addService(HAP.Service.EveHomeHistory, "", 1);
                     var tempHistory = this.getHistory(service.UUID, service.subtype);
                     var historyreftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
 
-                    service.addCharacteristic(Characteristic.EveFirmware);
-                    service.getCharacteristic(Characteristic.EveFirmware).updateValue(encodeEveData(util.format("01 %s be", numberToEveHexString(809, 4))));  // firmware version (build xxxx)));
+                    service.addCharacteristic(HAP.Characteristic.EveFirmware);
+                    service.updateCharacteristic(HAP.Characteristic.EveFirmware, encodeEveData(util.format("01 %s be", numberToEveHexString(809, 4))));  // firmware version (build xxxx)));
 
                     this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "weather", fields: "0102 0202 0302", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
+
+                    this.#outputLogging("History", false, "History linked to EveHome app as '%s'", "Eve Weather");
                     break;
                 }
 
-                case Service.AirQualitySensor.UUID :
-                case Service.TemperatureSensor.UUID : {
+                case HAP.Service.AirQualitySensor.UUID :
+                case HAP.Service.TemperatureSensor.UUID : {
                     // treat these as EveHome Room(s)
-                    var historyService = HomeKitAccessory.addService(Service.EveHomeHistory, "", 1);
+                    var historyService = HomeKitAccessory.addService(HAP.Service.EveHomeHistory, "", 1);
                     var tempHistory = this.getHistory(service.UUID, service.subtype);
                     var historyreftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
 
-                    service.addCharacteristic(Characteristic.EveFirmware);
+                    service.addCharacteristic(HAP.Characteristic.EveFirmware);
 
-                    if (service.UUID == Service.AirQualitySensor.UUID) {
+                    if (service.UUID == HAP.Service.AirQualitySensor.UUID) {
                         // Eve Room 2 (2018)
-                        service.getCharacteristic(Characteristic.EveFirmware).updateValue(encodeEveData(util.format("27 %s be", numberToEveHexString(1416, 4))));  // firmware version (build xxxx)));
+                        service.updateCharacteristic(HAP.Characteristic.EveFirmware, encodeEveData(util.format("27 %s be", numberToEveHexString(1416, 4))));  // firmware version (build xxxx)));
 
                         this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "room2", fields: "0102 0202 2202 2901 2501 2302 2801", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
-                        if (service.testCharacteristic(Characteristic.VOCDensity) == false) service.addCharacteristic(Characteristic.VOCDensity);
+                        if (service.testCharacteristic(HAP.Characteristic.VOCDensity) == false) service.addCharacteristic(HAP.Characteristic.VOCDensity);
 
                         // Need to ensure HomeKit accessory which has Air Quality service also has temperature & humidity services.
-                        // Temperature service needs characteristic Characteristic.TemperatureDisplayUnits set to Characteristic.TemperatureDisplayUnits.CELSIUS
+                        // Temperature service needs characteristic HAP.Characteristic.TemperatureDisplayUnits set to HAP.Characteristic.TemperatureDisplayUnits.CELSIUS
                     }
 
-                    if (service.UUID == Service.TemperatureSensor.UUID) {
+                    if (service.UUID == HAP.Service.TemperatureSensor.UUID) {
                         // Eve Room (2015)
-                        service.getCharacteristic(Characteristic.EveFirmware).updateValue(encodeEveData(util.format("02 %s be", numberToEveHexString(1151, 4))));  // firmware version (build xxxx)));
+                        service.updateCharacteristic(HAP.Characteristic.EveFirmware, encodeEveData(util.format("02 %s be", numberToEveHexString(1151, 4))));  // firmware version (build xxxx)));
 
                         this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "room", fields: "0102 0202 0402 0f03", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
-                        if (service.testCharacteristic(Characteristic.TemperatureDisplayUnits) == false) service.addCharacteristic(Characteristic.TemperatureDisplayUnits); // Needed to show history for temperature
-                        service.getCharacteristic(Characteristic.TemperatureDisplayUnits).updateValue(Characteristic.TemperatureDisplayUnits.CELSIUS);  // Temperature needs to be in Celsius
+                        if (service.testCharacteristic(HAP.Characteristic.TemperatureDisplayUnits) == false) service.addCharacteristic(HAP.Characteristic.TemperatureDisplayUnits); // Needed to show history for temperature
+                        service.updateCharacteristic(HAP.Characteristic.TemperatureDisplayUnits, HAP.Characteristic.TemperatureDisplayUnits.CELSIUS);  // Temperature needs to be in Celsius
                     }
+
+                    this.#outputLogging("History", false, "History linked to EveHome app as '%s'", "Eve Room");
                     break;
                 }
 
-                case Service.MotionSensor.UUID : {
+                case HAP.Service.MotionSensor.UUID : {
                     // treat these as EveHome Motion
-                    var historyService = HomeKitAccessory.addService(Service.EveHomeHistory, "", 1);
+                    var historyService = HomeKitAccessory.addService(HAP.Service.EveHomeHistory, "", 1);
                     var tempHistory = this.getHistory(service.UUID, service.subtype);
                     var historyreftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
 
                     // Need some internal storage to track Eve Motion configuration from EveHome app
                     this.EveMotionPersist = {};
                     this.EveMotionPersist.duration = optionalParams.hasOwnProperty("EveMotion_duration") ? optionalParams.EveMotion_duration : 5; // default 5 seconds
-                    this.EveMotionPersist.sensitivity = optionalParams.hasOwnProperty("EveMotion_sensitivity") ? optionalParams.EveMotion_sensivity : Characteristic.EveSensitivity.HIGH; // default sensitivity
+                    this.EveMotionPersist.sensitivity = optionalParams.hasOwnProperty("EveMotion_sensitivity") ? optionalParams.EveMotion_sensivity : HAP.Characteristic.EveSensitivity.HIGH; // default sensitivity
                     this.EveMotionPersist.ledmotion = optionalParams.hasOwnProperty("EveMotion_ledmotion") ? optionalParams.EveMotion_ledmotion: false; // off
 
                     this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "motion", fields:"1301 1c01", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
-                    service.addCharacteristic(Characteristic.EveSensitivity);
-                    service.addCharacteristic(Characteristic.EveDuration);
-                    service.addCharacteristic(Characteristic.EveLastActivation);
-                    //service.addCharacteristic(Characteristic.EveGetConfiguration);
-                    //service.addCharacteristic(Characteristic.EveSetConfiguration);
+                    service.addCharacteristic(HAP.Characteristic.EveSensitivity);
+                    service.addCharacteristic(HAP.Characteristic.EveDuration);
+                    service.addCharacteristic(HAP.Characteristic.EveLastActivation);
+                    //service.addCharacteristic(HAP.Characteristic.EveGetConfiguration);
+                    //service.addCharacteristic(HAP.Characteristic.EveSetConfiguration);
 
                     // Setup initial values and callbacks for charateristics we are using
-                    service.getCharacteristic(Characteristic.EveLastActivation).updateValue(this.__EveLastEventTime()); // time of last event in seconds since first event
-                    service.getCharacteristic(Characteristic.EveLastActivation).on("get", (callback) => {
-                        callback(null, this.__EveLastEventTime());  // time of last event in seconds since first event
+                    service.updateCharacteristic(HAP.Characteristic.EveLastActivation, this.#EveLastEventTime()); // time of last event in seconds since first event
+                    service.getCharacteristic(HAP.Characteristic.EveLastActivation).on("get", (callback) => {
+                        callback(null, this.#EveLastEventTime());  // time of last event in seconds since first event
                     });
 
-                    service.getCharacteristic(Characteristic.EveSensitivity).updateValue(this.EveMotionPersist.sensitivity);
-                    service.getCharacteristic(Characteristic.EveSensitivity).on("get", (callback) => {
+                    service.updateCharacteristic(HAP.Characteristic.EveSensitivity, this.EveMotionPersist.sensitivity);
+                    service.getCharacteristic(HAP.Characteristic.EveSensitivity).on("get", (callback) => {
                         callback(null, this.EveMotionPersist.sensitivity);
                     });
-                    service.getCharacteristic(Characteristic.EveSensitivity).on("set", (value, callback) => {
+                    service.getCharacteristic(HAP.Characteristic.EveSensitivity).on("set", (value, callback) => {
                         this.EveMotionPersist.sensitivity = value;
                         callback();
                     });
 
-                    service.getCharacteristic(Characteristic.EveDuration).updateValue(this.EveMotionPersist.duration);
-                    service.getCharacteristic(Characteristic.EveDuration).on("get", (callback) => {
+                    service.updateCharacteristic(HAP.Characteristic.EveDuration, this.EveMotionPersist.duration);
+                    service.getCharacteristic(HAP.Characteristic.EveDuration).on("get", (callback) => {
                         callback(null, this.EveMotionPersist.duration);
                     });
-                    service.getCharacteristic(Characteristic.EveDuration).on("set", (value, callback) => {
+                    service.getCharacteristic(HAP.Characteristic.EveDuration).on("set", (value, callback) => {
                         this.EveMotionPersist.duration = value; 
                         callback();
                     });
 
-                    /*service.getCharacteristic(Characteristic.EveGetConfiguration).updateValue(encodeEveData("300100"));
-                    service.getCharacteristic(Characteristic.EveGetConfiguration).on("get", (callback) => {
+                    /*service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, encodeEveData("300100"));
+                    service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
                         var value = util.format(
                             "0002 2500 0302 %s 9b04 %s 8002 ffff 1e02 2500 0c",
                             numberToEveHexString(1144, 4),  // firmware version (build xxxx)
@@ -954,7 +951,7 @@ class HomeKitHistory {
             
                         callback(null, encodeEveData(value));
                     });
-                    service.getCharacteristic(Characteristic.EveSetConfiguration).on("set", (value, callback) => {
+                    service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
                         var valHex = decodeEveData(value);
                         var index = 0;
                         while (index < valHex.length) {
@@ -975,7 +972,7 @@ class HomeKitHistory {
                                 }
 
                                 default : {
-                                    this.debug && console.debug(getTimestamp() + " [HISTORY] Unknown Eve Motion command '%s' with data '%s'", command, data);
+                                    this.#outputLogging("History", true,  "Unknown Eve Motion command '%s' with data '%s'", command, data);
                                     break;
                                 }
                             }
@@ -983,12 +980,14 @@ class HomeKitHistory {
                         }
                         callback();
                     }); */
+
+                    this.#outputLogging("History", false, "History linked to EveHome app as '%s'", "Eve Motion");
                     break;
                 }
 
-                case Service.SmokeSensor.UUID : {
+                case HAP.Service.SmokeSensor.UUID : {
                     // treat these as EveHome Smoke
-                    var historyService = HomeKitAccessory.addService(Service.EveHomeHistory, "", 1);
+                    var historyService = HomeKitAccessory.addService(HAP.Service.EveHomeHistory, "", 1);
                     var tempHistory = this.getHistory(service.UUID, service.subtype);
                     var historyreftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
                     // TODO = work out what the "signatures" need to be for an Eve Smoke
@@ -1007,22 +1006,22 @@ class HomeKitHistory {
                     this.EveSmokePersist.heattestpassed = optionalParams.hasOwnProperty("EveSmoke_heattestpassed") ? optionalParams.EveSmoke_heattestpassed: true; // Passed smoke test?
                     this.EveSmokePersist.hushedstate = optionalParams.hasOwnProperty("EveSmoke_hushedstate") ? optionalParams.EveSmoke_hushedstate : false; // Alarms muted
         
-                    service.addCharacteristic(Characteristic.EveGetConfiguration);
-                    service.addCharacteristic(Characteristic.EveSetConfiguration);
-                    service.addCharacteristic(Characteristic.EveDeviceStatus);
+                    service.addCharacteristic(HAP.Characteristic.EveGetConfiguration);
+                    service.addCharacteristic(HAP.Characteristic.EveSetConfiguration);
+                    service.addCharacteristic(HAP.Characteristic.EveDeviceStatus);
             
                     // Setup initial values and callbacks for charateristics we are using
-                    service.getCharacteristic(Characteristic.EveDeviceStatus).updateValue(this.__EveSmokeGetDetails(optionalParams.GetCommand, Characteristic.EveDeviceStatus.UUID));
-                    service.getCharacteristic(Characteristic.EveDeviceStatus).on("get", (callback) => {
-                        callback(null, this.__EveSmokeGetDetails(optionalParams.GetCommand, Characteristic.EveDeviceStatus.UUID));
+                    service.updateCharacteristic(HAP.Characteristic.EveDeviceStatus, this.#EveSmokeGetDetails(optionalParams.GetCommand, HAP.Characteristic.EveDeviceStatus));
+                    service.getCharacteristic(HAP.Characteristic.EveDeviceStatus).on("get", (callback) => {
+                        callback(null, this.#EveSmokeGetDetails(optionalParams.GetCommand, HAP.Characteristic.EveDeviceStatus));
                     });
     
-                    service.getCharacteristic(Characteristic.EveGetConfiguration).updateValue(this.__EveSmokeGetDetails(optionalParams.GetCommand, Characteristic.EveGetConfiguration.UUID));
-                    service.getCharacteristic(Characteristic.EveGetConfiguration).on("get", (callback) => {
-                        callback(null, this.__EveSmokeGetDetails(optionalParams.GetCommand, Characteristic.EveGetConfiguration.UUID));
+                    service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, this.#EveSmokeGetDetails(optionalParams.GetCommand, HAP.Characteristic.EveGetConfiguration));
+                    service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
+                        callback(null, this.#EveSmokeGetDetails(optionalParams.GetCommand, HAP.Characteristic.EveGetConfiguration));
                     });
 
-                    service.getCharacteristic(Characteristic.EveSetConfiguration).on("set", (value, callback) => {
+                    service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
                         // Loop through set commands passed to us
                         var processedData = {};
                         var valHex = decodeEveData(value);
@@ -1047,7 +1046,7 @@ class HomeKitHistory {
                                         processedData.statusled = this.EveSmokePersist.statusled;
                                     }
                                     if (subCommand != 0x02 && subCommand != 0x05) {
-                                        this.debug && console.debug(getTimestamp() + " [HISTORY] Unknown Eve Smoke command '%s' with data '%s'", command, data);
+                                        this.#outputLogging("History", true,  "Unknown Eve Smoke command '%s' with data '%s'", command, data);
                                     }
                                     break;
                                 }
@@ -1055,11 +1054,12 @@ class HomeKitHistory {
                             // case "41" : {
                                 // "59b8" - "b859" - 1011100001011001 17/3
                                 // "8aa5" - "a58a" - 1010010110001010 18/3
+                                // "6ef7" - "f76e"  - 30/5/23
                                 //   break;
                             // }
 
                                 default : {
-                                    this.debug && console.debug(getTimestamp() + " [HISTORY] Unknown Eve Smoke command '%s' with data '%s'", command, data);
+                                    this.#outputLogging("History", true,  "Unknown Eve Smoke command '%s' with data '%s'", command, data);
                                     break;
                                 }
                             }
@@ -1071,39 +1071,43 @@ class HomeKitHistory {
                         callback();
                     });
         
+                    this.#outputLogging("History", false, "History linked to EveHome app as '%s'", "Eve Smoke");
                     break;
                 }
 
-                case Service.Valve.UUID :
-                case Service.IrrigationSystem.UUID : {
+                case HAP.Service.Valve.UUID :
+                case HAP.Service.IrrigationSystem.UUID : {
                     // treat an irrigation system as EveHome Aqua
                     // Under this, any valve history will be presented under this. We dont log our History under irrigation service ID at all
 
                     // TODO - see if we can add history per valve service under the irrigation system????. History service per valve???
-                    var historyService = HomeKitAccessory.addService(Service.EveHomeHistory, "", 1);  
-                    var tempHistory = this.getHistory(Service.Valve.UUID, (service.UUID == Service.IrrigationSystem.UUID ? null : service.subtype));
+                    var historyService = HomeKitAccessory.addService(HAP.Service.EveHomeHistory, "", 1);  
+                    var tempHistory = this.getHistory(HAP.Service.Valve.UUID, (service.UUID == HAP.Service.IrrigationSystem.UUID ? null : service.subtype));
                     var historyreftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
     
-                    this.EveHome = {service: historyService, linkedservice: service, type: Service.Valve.UUID, sub: (service.UUID == Service.IrrigationSystem.UUID ? null : service.subtype), evetype: "aqua", fields: "1f01 2a08 2302", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
-                    service.addCharacteristic(Characteristic.EveGetConfiguration);
-                    service.addCharacteristic(Characteristic.EveSetConfiguration);
-                    if (service.testCharacteristic(Characteristic.LockPhysicalControls) == false) service.addCharacteristic(Characteristic.LockPhysicalControls); // Allows childlock toggle to be displayed in Eve App
+                    this.EveHome = {service: historyService, linkedservice: service, type: HAP.Service.Valve.UUID, sub: (service.UUID == HAP.Service.IrrigationSystem.UUID ? null : service.subtype), evetype: "aqua", fields: "1f01 2a08 2302", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
+                    service.addCharacteristic(HAP.Characteristic.EveGetConfiguration);
+                    service.addCharacteristic(HAP.Characteristic.EveSetConfiguration);
+                    if (service.testCharacteristic(HAP.Characteristic.LockPhysicalControls) == false) service.addCharacteristic(HAP.Characteristic.LockPhysicalControls); // Allows childlock toggle to be displayed in Eve App
 
                     // Need some internal storage to track Eve Aqua configuration from EveHome app
                     this.EveAquaPersist = {};
                     this.EveAquaPersist.firmware = optionalParams.hasOwnProperty("EveAqua_firmware") ? optionalParams.EveAqua_firmware : 1208; // Firmware version
                     this.EveAquaPersist.flowrate = optionalParams.hasOwnProperty("EveAqua_flowrate") ? optionalParams.EveAqua_flowrate : 18; // 18 L/Min default
+                    this.EveAquaPersist.latitude = optionalParams.hasOwnProperty("EveAqua_latitude") ? optionalParams.EveAqua_latitude : 0.0;  // Latitude
+                    this.EveAquaPersist.longitude = optionalParams.hasOwnProperty("EveAqua_longitude") ? optionalParams.EveAqua_longitude : 0.0;  // Longitude
+                    this.EveAquaPersist.utcoffset = optionalParams.hasOwnProperty("EveAqua_utcoffset") ? optionalParams.EveAqua_utcoffset : (new Date().getTimezoneOffset() * -60);  // UTC offset in seconds
                     this.EveAquaPersist.enableschedule = optionalParams.hasOwnProperty("EveAqua_enableschedule") ? optionalParams.EveAqua_enableschedule : false; // Schedules on/off
-                    this.EveAquaPersist.command44 = "441105" + (this.EveAquaPersist.enableschedule == true ? "03" : "02") + "00000000000000000000000000000";  // schedule status. on or off
-                    this.EveAquaPersist.command45 = "4509050200000008000800"; // No Schedules defined
-                    this.EveAquaPersist.command46 = "4609050000000f00000000"; // No days defined for schedules
+                    this.EveAquaPersist.pause = optionalParams.hasOwnProperty("EveAqua_pause") ? optionalParams.EveAqua_pause : 0;  // Day pause 
+                    this.EveAquaPersist.programs = optionalParams.hasOwnProperty("EveAqua_programs") ? optionalParams.EveAqua_programs : [];    // Schedules
                 
                     // Setup initial values and callbacks for charateristics we are using
-                    service.getCharacteristic(Characteristic.EveGetConfiguration).updateValue(this.__EveAquaGetDetails(optionalParams.GetCommand));
-                    service.getCharacteristic(Characteristic.EveGetConfiguration).on("get", (callback) => {
-                        callback(null, this.__EveAquaGetDetails(optionalParams.GetCommand));
+                    service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, this.#EveAquaGetDetails(optionalParams.GetCommand));
+                    service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
+                        callback(null, this.#EveAquaGetDetails(optionalParams.GetCommand));
                     });
-                    service.getCharacteristic(Characteristic.EveSetConfiguration).on("set", (value, callback) => {
+
+                    service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
                         // Loop through set commands passed to us
                         var programs = [];
                         var processedData = {};
@@ -1118,7 +1122,7 @@ class HomeKitHistory {
                             switch(command) {
                                 case "2e" : {
                                     // flow rate in L/Minute
-                                    this.EveAquaPersist.flowrate = ((EveHexStringToNumber(data) * 60) / 1000).toFixed(1);
+                                    this.EveAquaPersist.flowrate = Number(((EveHexStringToNumber(data) * 60) / 1000).toFixed(1));
                                     processedData.flowrate = this.EveAquaPersist.flowrate;
                                     break;
                                 }
@@ -1133,7 +1137,6 @@ class HomeKitHistory {
                                 case "44" : {
                                     // Schedules on/off and Timezone/location information
                                     var subCommand = EveHexStringToNumber(data.substr(2, 4));
-                                    this.EveAquaPersist.command44 = command + valHex.substr(index + 2, 2) + data;
                                     this.EveAquaPersist.enableschedule = (subCommand & 0x01) == 0x01;   // Bit 1 is schedule status on/off
                                     if ((subCommand & 0x10) == 0x10) this.EveAquaPersist.utcoffset = EveHexStringToNumber(data.substr(10, 8)) * 60;   // Bit 5 is UTC offset in seconds
                                     if ((subCommand & 0x04) == 0x04) this.EveAquaPersist.latitude = EveHexStringToFloat(data.substr(18, 8), 7);   // Bit 4 is lat/long information 
@@ -1153,17 +1156,42 @@ class HomeKitHistory {
 
                                 case "45" : {
                                     // Eve App Scheduling Programs
-                                    this.EveAquaPersist.command45 = command + valHex.substr(index + 2, 2) + data;
                                     var programcount = EveHexStringToNumber(data.substr(2, 2));   // Number of defined programs
                                     var unknown = EveHexStringToNumber(data.substr(4, 6));   // Unknown data for 6 bytes
 
-                                    for (var index2 = parseInt(data.substr(0, 2), 16) * 2; index2 < data.length; index2+=2) {
-                                        if (data.substr(index2, 2) == "0a" || data.substr(index2, 2) == "0b") {
+                                    var index2 = 14;    // Program schedules start at offset 14 in data
+                                    var programs = [];
+                                    while (index2 < data.length) {
+                                        var scheduleSize = parseInt(data.substr(index2 + 2, 2), 16) * 8;
+                                        var schedule = data.substring(index2 + 4, index2 + 4 + scheduleSize);
+                                    
+                                        if (schedule != "") {
                                             var times = [];
-                                            for (var index3 = 0; index3 < parseInt(data.substr(index2 + 2, 2), 16) && parseInt(data.substr(index2 + 2, 2), 16) != 8; index3++)
+                                            for (var index3 = 0; index3 < schedule.length / 8; index3++)
                                             {
+                                                // schedules appear to be a 32bit word
+                                                // after swapping 16bit words
+                                                // 1st 16bits = end time 
+                                                // 2nd 16bits = start time
+                                                // starttime decode
+                                                // bit 1-5 specific time or sunrise/sunset 05 = time, 07 = sunrise/sunset
+                                                // if sunrise/sunset
+                                                //      bit 6, sunrise = 1, sunset = 0
+                                                //      bit 7, before = 1, after = 0
+                                                //      bit 8 - 16 - minutes for sunrise/sunset
+                                                // if time 
+                                                //      bit 6 - 16 - minutes from 00:00
+                                                //   
+                                                // endtime decode
+                                                // bit 1-5 specific time or sunrise/sunset 01 = time, 03 = sunrise/sunset
+                                                // if sunrise/sunset
+                                                //      bit 6, sunrise = 1, sunset = 0
+                                                //      bit 7, before = 1, after = 0
+                                                //      bit 8 - 16 - minutes for sunrise/sunset
+                                                // if time 
+                                                //      bit 6 - 16 - minutes from 00:00
                                                 // decode start time
-                                                var start = parseInt(data.substr(index2 + 4 + (index3 * 8), 4).match(/[a-fA-F0-9]{2}/g).reverse().join(''), 16);
+                                                var start = parseInt(schedule.substring((index3 * 8), (index3 * 8) + 4).match(/[a-fA-F0-9]{2}/g).reverse().join(""), 16);
                                                 var start_min = null;
                                                 var start_hr = null;
                                                 var start_offset = null;
@@ -1178,9 +1206,9 @@ class HomeKitHistory {
                                                     start_sunrise = ((start >>> 5) & 0x01);    // 1 = sunrise, 0 = sunset
                                                     start_offset = ((start >>> 6) & 0x01 ? ~((start >>> 7) * 60) + 1 : (start >>> 7) * 60);   // offset from sunrise/sunset (plus/minus value)
                                                 } 
-
+                                    
                                                 // decode end time
-                                                var end = parseInt(data.substr(index2 + 4 + ((index3 * 8) + 4), 4).match(/[a-fA-F0-9]{2}/g).reverse().join(''), 16);
+                                                var end = parseInt(schedule.substring((index3 * 8) + 4, (index3 * 8) + 8).match(/[a-fA-F0-9]{2}/g).reverse().join(""), 16);
                                                 var end_min = null;
                                                 var end_hr = null;
                                                 var end_offset = null;
@@ -1194,26 +1222,33 @@ class HomeKitHistory {
                                                     end_sunrise = ((end >>> 5) & 0x01);    // 1 = sunrise, 0 = sunset
                                                     end_offset = ((end >>> 6) & 0x01 ? ~((end >>> 7) * 60) + 1 : (end >>> 7) * 60);   // offset from sunrise/sunset (plus/minus value)
                                                 }
-                    
-                                                times.push({"type" : (start_sunrise == null ? "time" : (start_sunrise ? "sunrise" : "sunset")), "offset": start_offset, "duration" : (end_offset - start_offset)});
+                                                times.push({"start" : (start_sunrise == null ? start_offset : (start_sunrise ? "sunrise" : "sunset")), "duration" : (end_offset - start_offset), "offset": start_offset});
                                             }
                                             programs.push({"id": (programs.length + 1), "days": [], "schedule": times});
-                                            index2 += (index3 * 8);
                                         }
+                                        index2 = index2 + 4 + scheduleSize; // Move to next program
                                     }
                                     break;
                                 }
 
                                 case "46" : {
                                     // Eve App active days across programs
-                                    this.EveAquaPersist.command46 = command + valHex.substr(index + 2, 2) + data;
+                                    //var daynumber = (EveHexStringToNumber(data.substr(8, 6)) >>> 4);
+                                
+                                    // bit masks for active days mapped to programm id
+                                   /* var mon = (daynumber & 0x7);
+                                    var tue = ((daynumber >>> 3) & 0x7)
+                                    var wed = ((daynumber >>> 6) & 0x7)
+                                    var thu = ((daynumber >>> 9) & 0x7)
+                                    var fri = ((daynumber >>> 12) & 0x7)
+                                    var sat = ((daynumber >>> 15) & 0x7)
+                                    var sun = ((daynumber >>> 18) & 0x7) */
                                     var unknown = EveHexStringToNumber(data.substr(0, 6));   // Unknown data for first 6 bytes
                                     var daysbitmask = (EveHexStringToNumber(data.substr(8, 6)) >>> 4);
-                                    var daysofweek = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
                                     programs.forEach(program => {
-                                        for (var index = 0; index < daysofweek.length; index++) {
-                                            if (((daysbitmask >>> (index * 3)) & 0x7) == program.id) {
-                                                program.days.push(daysofweek[index]);
+                                        for (var index2 = 0; index2 < DAYSOFWEEK.length; index2++) {
+                                            if (((daysbitmask >>> (index2 * 3)) & 0x7) == program.id) {
+                                                program.days.push(DAYSOFWEEK[index2]);
                                             }
                                         }
                                     });
@@ -1230,19 +1265,20 @@ class HomeKitHistory {
 
                                 case "4b" : {
                                     // Eve App suspension scene triggered from HomeKit
-                                    processedData.days = EveHexStringToNumber(data.substr(0, 8)) / 1440; // 1440 mins in a day
+                                    this.EveAquaPersist.pause = (EveHexStringToNumber(data.substr(0, 8)) / 1440) + 1; // 1440 mins in a day. Zero based day, so we add one
+                                    processedData.pause = this.EveAquaPersist.pause;
                                     break;
                                 }
 
                                 case "b1" : {
-                                    // Child lock on/off. Seems data packet is always same (0100), so inspect "Characteristic.LockPhysicalControls)" for actual status
-                                    this.EveAquaPersist.childlock = (service.getCharacteristic(Characteristic.LockPhysicalControls).value == Characteristic.CONTROL_LOCK_ENABLED ? true : false);
+                                    // Child lock on/off. Seems data packet is always same (0100), so inspect "HAP.Characteristic.LockPhysicalControls)" for actual status
+                                    this.EveAquaPersist.childlock = (service.getCharacteristic(HAP.Characteristic.LockPhysicalControls).value == HAP.Characteristic.CONTROL_LOCK_ENABLED ? true : false);
                                     processedData.childlock = this.EveAquaPersist.childlock;
                                     break;
                                 }
 
                                 default : {
-                                    this.debug && console.debug(getTimestamp() + " [HISTORY] Unknown Eve Aqua command '%s' with data '%s'", command, data);
+                                    this.#outputLogging("History", true,  "Unknown Eve Aqua command '%s' with data '%s'", command, data);
                                     break;
                                 }
                             }
@@ -1253,57 +1289,176 @@ class HomeKitHistory {
                         if (typeof optionalParams.SetCommand == "function" && Object.keys(processedData).length != 0) optionalParams.SetCommand(processedData);
                         callback();
                     });
+
+                    this.#outputLogging("History", false, "History linked to EveHome app as '%s'", "Eve Aqua");
                     break;
                 }
 
-                case Service.Outlet.UUID : {
+                case HAP.Service.Outlet.UUID : {
                     // treat these as EveHome energy
                     // TODO - schedules
-                    var historyService = HomeKitAccessory.addService(Service.EveHomeHistory, "", 1);  
+                    var historyService = HomeKitAccessory.addService(HAP.Service.EveHomeHistory, "", 1);  
                     var tempHistory = this.getHistory(service.UUID, service.subtype);
                     var historyreftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
             
-                    this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "energy", fields: "0702 0e01", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0}; 
-                    service.addCharacteristic(Characteristic.EveVoltage);
-                    service.addCharacteristic(Characteristic.EveElectricCurrent);
-                    service.addCharacteristic(Characteristic.EveCurrentConsumption);
-                    service.addCharacteristic(Characteristic.EveTotalConsumption);
+                    this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "energy", fields: "0702 0e01", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
+                    service.addCharacteristic(HAP.Characteristic.EveFirmware);
+                    service.addCharacteristic(HAP.Characteristic.EveElectricalVoltage);
+                    service.addCharacteristic(HAP.Characteristic.EveElectricalCurrent);
+                    service.addCharacteristic(HAP.Characteristic.EveElectricalWattage);
+                    service.addCharacteristic(HAP.Characteristic.EveTotalConsumption);
 
                     // Setup initial values and callbacks for charateristics we are using
-                    service.getCharacteristic(Characteristic.EveCurrentConsumption).updateValue(this.__EveEnergyCurrentPower());
-                    service.getCharacteristic(Characteristic.EveCurrentConsumption).on("get", (callback) => {
-                        callback(null, this.__EveEnergyCurrentPower());
+                    service.updateCharacteristic(HAP.Characteristic.EveFirmware, encodeEveData(util.format("29 %s be", numberToEveHexString(807, 4))));  // firmware version (build xxxx)));
+
+                    service.updateCharacteristic(HAP.Characteristic.EveElectricalCurrent, this.#EveEnergyGetDetails(optionalParams.GetCommand, HAP.Characteristic.EveElectricalCurrent));
+                    service.getCharacteristic(HAP.Characteristic.EveElectricalCurrent).on("get", (callback) => {
+                        callback(null, this.#EveEnergyGetDetails(optionalParams.GetCommand, HAP.Characteristic.EveElectricalCurrent));
                     });
+
+                    service.updateCharacteristic(HAP.Characteristic.EveElectricalVoltage, this.#EveEnergyGetDetails(optionalParams.GetCommand, HAP.Characteristic.EveElectricalVoltage));
+                    service.getCharacteristic(HAP.Characteristic.EveElectricalVoltage).on("get", (callback) => {
+                        callback(null, this.#EveEnergyGetDetails(optionalParams.GetCommand, HAP.Characteristic.EveElectricalVoltage));
+                    });
+
+                    service.updateCharacteristic(HAP.Characteristic.EveElectricalWattage, this.#EveEnergyGetDetails(optionalParams.GetCommand, HAP.Characteristic.EveElectricalWattage));
+                    service.getCharacteristic(HAP.Characteristic.EveElectricalWattage).on("get", (callback) => {
+                        callback(null, this.#EveEnergyGetDetails(optionalParams.GetCommand, HAP.Characteristic.EveElectricalWattage));
+                    });
+
+                    this.#outputLogging("History", false, "History linked to EveHome app as '%s'", "Eve Energy");
+                    break;
+                }
+
+
+                case HAP.Service.LeakSensor.UUID : {
+                    // treat these as EveHome Water Guard
+                    var historyService = HomeKitAccessory.addService(HAP.Service.EveHomeHistory, "", 1);
+                    var tempHistory = this.getHistory(service.UUID, service.subtype);
+                    var historyreftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
+
+                    service.addCharacteristic(HAP.Characteristic.EveGetConfiguration);
+                    service.addCharacteristic(HAP.Characteristic.EveSetConfiguration);
+
+                    if (service.testCharacteristic(HAP.Characteristic.StatusFault) == false) service.addCharacteristic(HAP.Characteristic.StatusFault);
+
+                    // <---- Still need to detwermin signature fields
+                    this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "waterguard", fields: "xxxx", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
+
+                    // Need some internal storage to track Eve Water Guard configuration from EveHome app
+                    this.EveWaterGuardPersist = {};
+                    this.EveWaterGuardPersist.firmware = optionalParams.hasOwnProperty("EveWaterGuard_firmware") ? optionalParams.EveWaterGuard_firmware : 2866; // Firmware version
+                    this.EveWaterGuardPersist.lastalarmtest = optionalParams.hasOwnProperty("EveWaterGuard_lastalarmtest") ? optionalParams.EveWaterGuard_lastalarmtest : 0; // Time in seconds of alarm test
+                    this.EveWaterGuardPersist.muted = optionalParams.hasOwnProperty("EveWaterGuard_muted") ? optionalParams.EveWaterGuard_muted : false;    // Leak alarms are not muted
+                
+                    // Setup initial values and callbacks for charateristics we are using
+                    service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, this.#EveWaterGuardGetDetails(optionalParams.GetCommand));
+                    service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
+                        callback(null, this.#EveWaterGuardGetDetails(optionalParams.GetCommand));
+                    });
+
+                    service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
+                        var valHex = decodeEveData(value);
+                        var index = 0;
+                        while (index < valHex.length) {
+                            // first byte is command in this data stream
+                            // second byte is size of data for command
+                            var command = valHex.substr(index, 2);
+                            var size = parseInt(valHex.substr(index + 2, 2), 16) * 2;
+                            var data = valHex.substr(index + 4, parseInt(valHex.substr(index + 2, 2), 16) * 2);
+
+                            console.log(command, data)
+                            switch(command) {
+                                case "4d" : {
+                                    // Alarm test
+                                    // b4 - start
+                                    // 00 - finished
+                                    break;
+                                }
+
+                                case "4e" : {
+                                    // Mute alarm
+                                    // 00 - unmute alarm
+                                    // 01 - mute alarm
+                                    // 03 - alarm test
+                                    if (data == "03") {
+                                        // Simulate a leak test
+                                        service.updateCharacteristic(HAP.Characteristic.LeakDetected, HAP.Characteristic.LeakDetected.LEAK_DETECTED);
+                                        this.EveWaterGuardPersist.lastalarmtest = Math.floor(Date.now() / 1000);    // Now time for last test
+                                       
+                                        setTimeout(() => {         
+                                            // Clear our simulated leak test after 5 seconds
+                                            service.updateCharacteristic(HAP.Characteristic.LeakDetected, HAP.Characteristic.LeakDetected.LEAK_NOT_DETECTED);
+                                        }, 5000);
+                                    }
+                                    if (data == "00" || data == "01") {
+                                        this.EveWaterGuardPersist.muted = (data == "01" ? true : false);
+                                    }
+                                    break;
+                                }
+
+                                default : {
+                                    this.#outputLogging("History", true,  "Unknown Eve Water Guard command '%s' with data '%s'", command, data);
+                                    break;
+                                }
+                            }
+                            index += (4 + size);  // Move to next command accounting for header size of 4 bytes
+                        };
+                        callback();
+                    });
+
+                    this.#outputLogging("History", false, "History linked to EveHome app as '%s'", "Eve Water Guard");
                     break;
                 }
             }
         
             // Setup callbacks if our service successfully created
-            if (this.EveHome && this.EveHome.hasOwnProperty("service")) {
-                this.EveHome.service.getCharacteristic(Characteristic.EveResetTotal).on("get", (callback) => {callback(null, this.historyData.reset - EPOCH_OFFSET)});   // time since history reset
-                this.EveHome.service.getCharacteristic(Characteristic.EveHistoryStatus).on("get", this.__EveHistoryStatus.bind(this));
-                this.EveHome.service.getCharacteristic(Characteristic.EveHistoryEntries).on("get", this.__EveHistoryEntries.bind(this));
-                this.EveHome.service.getCharacteristic(Characteristic.EveHistoryRequest).on("set", this.__EveHistoryRequest.bind(this));
-                this.EveHome.service.getCharacteristic(Characteristic.EveSetTime).on("set", this.__EveSetTime.bind(this));
+            if (typeof this.EveHome == "object" && this.EveHome.hasOwnProperty("service") == true) {
+                this.EveHome.service.getCharacteristic(HAP.Characteristic.EveResetTotal).on("get", (callback) => {callback(null, this.historyData.reset - EPOCH_OFFSET)});   // time since history reset
+                this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryStatus).on("get", this.#EveHistoryStatus.bind(this));
+                this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryEntries).on("get", this.#EveHistoryEntries.bind(this));
+                this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryRequest).on("set", this.#EveHistoryRequest.bind(this));
+                this.EveHome.service.getCharacteristic(HAP.Characteristic.EveSetTime).on("set", this.#EveSetTime.bind(this));
 
                 return this.EveHome.service;    // Return service handle for our EveHome accessory service
             }
         }
     }
 
-    updateEveHome(service, optionalParams) {
-        if (this.EveHome && this.EveHome.hasOwnProperty("service")) {
-            switch (service.UUID) {
-                case Service.SmokeSensor.UUID : {
-                    service.getCharacteristic(Characteristic.EveDeviceStatus).updateValue(this.__EveSmokeGetDetails(optionalParams.GetCommand, Characteristic.EveDeviceStatus.UUID));
-                    service.getCharacteristic(Characteristic.EveGetConfiguration).updateValue(this.__EveSmokeGetDetails(optionalParams.GetCommand, Characteristic.EveGetConfiguration.UUID));
-                    break;
-                }
+    updateEveHome(service, GetCommand) {
+        if (typeof this.EveHome != "object" || this.EveHome.hasOwnProperty("service") == false || typeof GetCommand != "function") {
+            return;
+        }
+
+        switch (service.UUID) {
+            case HAP.Service.SmokeSensor.UUID : {
+                service.updateCharacteristic(HAP.Characteristic.EveDeviceStatus, this.#EveSmokeGetDetails(GetCommand, HAP.Characteristic.EveDeviceStatus));
+                service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, this.#EveSmokeGetDetails(GetCommand, HAP.Characteristic.EveGetConfiguration));
+                break;
             }
-        }            
+
+            case HAP.Service.HeaterCooler.UUID :
+            case HAP.Service.Thermostat.UUID : {
+                service.updateCharacteristic(HAP.Characteristic.EveProgramCommand, this.#EveThermoGetDetails(GetCommand));
+                break;
+            }
+
+            case HAP.Service.Valve.UUID :
+            case HAP.Service.IrrigationSystem.UUID : {
+                service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, this.#EveAquaGetDetails(GetCommand));
+                break;
+            }
+
+            case HAP.Service.Outlet.UUID : {
+                service.updateCharacteristic(HAP.Characteristic.EveElectricalWattage, this.#EveEnergyGetDetails(GetCommand, HAP.Characteristic.EveElectricalWattage));
+                service.updateCharacteristic(HAP.Characteristic.EveElectricalVoltage, this.#EveEnergyGetDetails(GetCommand, HAP.Characteristic.EveElectricalVoltage));
+                service.updateCharacteristic(HAP.Characteristic.EveElectricalCurrent, this.#EveEnergyGetDetails(GetCommand, HAP.Characteristic.EveElectricalCurrent));
+                break;
+            }
+        }        
     }
 
-    __EveLastEventTime() {
+    #EveLastEventTime() {
         // calculate time in seconds since first event to last event. If no history we'll use the current time as the last event time
         var historyEntry = this.lastHistory(this.EveHome.type, this.EveHome.sub);
         var lastTime = Math.floor(new Date() / 1000) - (this.EveHome.reftime + EPOCH_OFFSET);
@@ -1313,8 +1468,91 @@ class HomeKitHistory {
         return lastTime;
     }
 
-    __EveAquaGetDetails(optionGetFunction) {
+    #EveThermoGetDetails(optionGetFunction) {
+        // returns an encoded value formatted for an Eve Thermo device 
+        //
+        // TODO - before enabling below need to workout:
+        //          - mode graph to show
+        //          - temperature unit setting
+        //          - thermo 2020??
+        //
+        // commands
+        // 11 - valve protection on/off - TODO
+        // 12 - temp offset
+        // 13 - schedules enabled/disabled
+        // 16 - Window/Door open status
+        //          100000 - open
+        //          000000 - close
+        // 14 - installation status
+        //          c0,c8 = ok
+        //          c1,c6,c9 = in-progress
+        //          c2,c3,c4,c5 = error on removal
+        //          c7 = not attached
+        // 19 - vacation mode
+        //          00ff - off
+        //          01 + "away temp" - enabled with vacation temp
+        // f4 - temperatures
+        // fa - programs for week
+        // fc - date/time (mmhhDDMMYY)
+        // 1a - default day program??
+
+        if (typeof optionGetFunction == "function") this.EveThermoPersist = optionGetFunction(this.EveThermoPersist); // Fill in details we might want to be dynamic
+
+        // Encode the temperature offset into an unsigned value
+        var tempOffset = this.EveThermoPersist.tempoffset * 10;
+        if (tempOffset < 127) {
+            tempOffset = tempOffset + 256;
+        }
+
+        // Encode date/time
+        var tempDateTime = this.EveThermoPersist.datetime;
+        if (typeof this.EveThermoPersist.datetime == "object") {
+            tempDateTime = this.EveThermoPersist.datetime.getMinutes().toString(16).padStart(2, "0") + this.EveThermoPersist.datetime.getHours().toString(16).padStart(2, "0") + this.EveThermoPersist.datetime.getDate().toString(16).padStart(2, "0") + (this.EveThermoPersist.datetime.getMonth() + 1).toString(16).padStart(2, "0") + parseInt(this.EveThermoPersist.datetime.getFullYear().toString().substr(-2)).toString(16).padStart(2, "0");
+        }
+
+        // Encode program schedule and temperatures
+        // f4 = temps
+        // fa = schedule
+        const EMPTYSCHEDULE = "ffffffffffffffff";
+        var encodedSchedule = [EMPTYSCHEDULE, EMPTYSCHEDULE, EMPTYSCHEDULE, EMPTYSCHEDULE, EMPTYSCHEDULE, EMPTYSCHEDULE, EMPTYSCHEDULE];
+        var encodedTemperatures = "0000";
+        if (typeof this.EveThermoPersist.programs == "object") {
+            var tempTemperatures = [];
+            Object.entries(this.EveThermoPersist.programs).forEach(([id, days]) => {
+                var temp = "";
+                days.schedule.forEach(time => {
+                    temp = temp + numberToEveHexString(Math.round(time.start / 600), 2) + numberToEveHexString(Math.round((time.start + time.duration) / 600), 2);
+                    tempTemperatures.push(time.ecotemp, time.comforttemp);
+                });
+                encodedSchedule[DAYSOFWEEK.indexOf(days.days.toLowerCase())] = temp.substring(0, EMPTYSCHEDULE.length) + EMPTYSCHEDULE.substring(temp.length, EMPTYSCHEDULE.length);
+            });
+            var ecoTemp = tempTemperatures.length == 0 ? 0 : Math.min(...tempTemperatures);
+            var comfortTemp = tempTemperatures.length == 0 ? 0 : Math.max(...tempTemperatures);
+            encodedTemperatures = numberToEveHexString((ecoTemp / 0.5), 2) + numberToEveHexString((comfortTemp / 0.5), 2);
+        }
+
+        var value = util.format(
+            "12%s 13%s 14%s 19%s fc%s f40000%s fa%s",
+            numberToEveHexString(tempOffset, 2),
+            this.EveThermoPersist.enableschedule == true ? "01" : "00",
+            this.EveThermoPersist.attached = this.EveThermoPersist.attached == true ? "c0" : "c7",
+            this.EveThermoPersist.vacation == true ? "01" + numberToEveHexString(this.EveThermoPersist.vacationtemp * 2, 2) : "00ff", // away status and temp
+            numberToEveHexString(tempDateTime, 6),
+            encodedTemperatures,
+            encodedSchedule[0] + encodedSchedule[1] + encodedSchedule[2] + encodedSchedule[3] + encodedSchedule[4] + encodedSchedule[5] + encodedSchedule[6]);
+
+         return encodeEveData(value);
+    }
+
+    #EveAquaGetDetails(optionGetFunction) {
         // returns an encoded value formatted for an Eve Aqua device for water usage and last water time
+        if (typeof optionGetFunction == "function") this.EveAquaPersist = optionGetFunction(this.EveAquaPersist); // Fill in details we might want to be dynamic
+
+        if (Array.isArray(this.EveAquaPersist.programs) == false) {
+            // Ensure any program information is an array
+            this.EveAquaPersist.programs = [];
+        }
+
         var tempHistory = this.getHistory(this.EveHome.type, this.EveHome.sub); // get flattened history array for easier processing
 
         // Calculate total water usage over history period
@@ -1325,39 +1563,109 @@ class HomeKitHistory {
                 totalWater += parseFloat(historyEntry.water);
             }
         });
-        if (typeof optionGetFunction == "function") this.EveAquaPersist = optionGetFunction(this.EveAquaPersist); // Fill in details we might want to be dynamic
+
+        // Encode program schedule
+        // 45 = schedules
+        // 46 = days of weeks for schedule;
+        const EMPTYSCHEDULE = "0800";
+        var encodedSchedule = "";
+        var daysbitmask = 0;
+        var temp45Command = "";
+        var temp46Command = "";
+
+        this.EveAquaPersist.programs.forEach((program) => {
+            var tempEncodedSchedule = "";
+            program.schedule.forEach((schedule) => {
+                // Encode absolute time (ie: not sunrise/sunset one)
+                if (typeof schedule.start == "number") {
+                    tempEncodedSchedule = tempEncodedSchedule + numberToEveHexString(((schedule.start / 60) << 5) + 0x05, 4);
+                    tempEncodedSchedule = tempEncodedSchedule + numberToEveHexString((((schedule.start + schedule.duration) / 60) << 5) + 0x01, 4);
+                }
+                if (typeof schedule.start == "string" && schedule.start == "sunrise") {
+                    if (schedule.offset < 0) {
+                        tempEncodedSchedule = tempEncodedSchedule + numberToEveHexString(((Math.abs(schedule.offset) / 60) << 7) + 0x67, 4);
+                        tempEncodedSchedule = tempEncodedSchedule + numberToEveHexString((((Math.abs(schedule.offset) + schedule.duration) / 60) << 7) + 0x63, 4);
+                    }
+                    if (schedule.offset >= 0) {
+                        tempEncodedSchedule = tempEncodedSchedule + numberToEveHexString(((schedule.offset / 60) << 7) + 0x27, 4);
+                        tempEncodedSchedule = tempEncodedSchedule + numberToEveHexString((((schedule.offset + schedule.duration) / 60) << 7) + 0x23, 4);
+                    }
+                }
+                if (typeof schedule.start == "string" && schedule.start == "sunset") {
+                    if (schedule.offset < 0) {
+                        tempEncodedSchedule = tempEncodedSchedule + numberToEveHexString(((Math.abs(schedule.offset) / 60) << 7) + 0x47, 4);
+                        tempEncodedSchedule = tempEncodedSchedule + numberToEveHexString((((Math.abs(schedule.offset) + schedule.duration) / 60) << 7) + 0x43, 4);
+                    }
+                    if (schedule.offset >= 0) {
+                        tempEncodedSchedule = tempEncodedSchedule + numberToEveHexString(((schedule.offset / 60) << 7) + 0x07, 4);
+                        tempEncodedSchedule = tempEncodedSchedule + numberToEveHexString((((schedule.offset + schedule.duration) / 60) << 7) + 0x03, 4);
+                    }
+                }
+            });
+            encodedSchedule = encodedSchedule + numberToEveHexString((tempEncodedSchedule.length / 8) < 2 ? 10 : 11, 2) + numberToEveHexString(tempEncodedSchedule.length / 8, 2) + tempEncodedSchedule;
+
+            // Encode days for this program
+            // Program ID is set in 3bit repeating sections
+            // sunsatfrithuwedtuemon
+            program.days.forEach((day) => {
+                daysbitmask = daysbitmask + (program.id << (DAYSOFWEEK.indexOf(day) * 3));
+            });
+        });
+
+        // Build the encoded schedules command to send back to Eve
+        temp45Command = "05" + numberToEveHexString(this.EveAquaPersist.programs.length + 1, 2) + "000000" + EMPTYSCHEDULE + encodedSchedule;
+        temp45Command = "45" + numberToEveHexString(temp45Command.length / 2, 2) + temp45Command;
+
+        // Build the encoded days command to send back to Eve
+        // 00000 appears to always be 1b202c??
+        temp46Command = "05" + "000000" + numberToEveHexString((daysbitmask << 4) + 0x0f, 6);
+        temp46Command = temp46Command.padEnd((daysbitmask == 0 ? 18 : 168), "0");   // Pad the command out to Eve's lengths 
+        temp46Command = "46" + numberToEveHexString(temp46Command.length / 2, 2) + temp46Command;
 
         var value = util.format(
-            "0002 2300 0302 %s d004 %s 9b04 %s 2f0e %s 0000 2e02 %s %s %s %s 0000000000000000 1e02 2300 0c",
+            "0002 2300 0302 %s d004 %s 9b04 %s 2f0e %s 2e02 %s 441105 %s%s%s%s %s %s %s 0000000000000000 1e02 2300 0c",
             numberToEveHexString(this.EveAquaPersist.firmware, 4),  // firmware version (build xxxx)
             numberToEveHexString(tempHistory.length != 0 ? tempHistory[tempHistory.length - 1].time : 0, 8),  // time of last event, 0 if never watered
             numberToEveHexString(Math.floor(new Date() / 1000), 8), // "now" time
-            numberToEveHexString(Math.floor(totalWater * 1000), 16), // total water usage in ml (64bit value)
+            numberToEveHexString(Math.floor(totalWater * 1000), 20), // total water usage in ml (64bit value)
             numberToEveHexString(Math.floor((this.EveAquaPersist.flowrate * 1000) / 60), 4), // water flow rate (16bit value)
-            this.EveAquaPersist.command44,
-            this.EveAquaPersist.command45,
-            this.EveAquaPersist.command46);
+            numberToEveHexString(this.EveAquaPersist.enableschedule == true ? parseInt("10111", 2) : parseInt("10110", 2), 8),
+            numberToEveHexString(Math.floor(this.EveAquaPersist.utcoffset / 60), 8),
+            floatToEveHexString(this.EveAquaPersist.latitude, 8),
+            floatToEveHexString(this.EveAquaPersist.longitude, 8),
+            (this.EveAquaPersist.pause != 0 ? "4b04" + numberToEveHexString((this.EveAquaPersist.pause - 1) * 1440, 8) : ""),
+            temp45Command, 
+            temp46Command);
 
         return encodeEveData(value);
     };
 
-    __EveEnergyCurrentPower() {
-        // Use last history entry for currrent power consumption
-        var historyEntry = this.lastHistory(this.EveHome.type, this.EveHome.sub);
-        var lastWatts = 0;
-        if (historyEntry && Object.keys(historyEntry).length != 0) {
-            lastWatts = historyEntry.watts;
+    #EveEnergyGetDetails(optionGetFunction, returnForCharacteristic) {
+        var energyDetails = {};
+        var returnValue = null;
+
+        if (typeof optionGetFunction == "function") energyDetails = optionGetFunction(energyDetails); // Fill in details we might want to be dynamic
+
+        if (returnForCharacteristic.UUID == HAP.Characteristic.EveElectricalWattage.UUID && energyDetails.hasOwnProperty("watts") == true && typeof energyDetails.watts == "number") {
+            returnValue = energyDetails.watts;
         }
-        return lastWatts;
+        if (returnForCharacteristic.UUID == HAP.Characteristic.EveElectricalVoltage.UUID && energyDetails.hasOwnProperty("volts") == true && typeof energyDetails.volts == "number") {
+            returnValue = energyDetails.volts;
+        }
+        if (returnForCharacteristic.UUID == HAP.Characteristic.EveElectricalCurrent.UUID && energyDetails.hasOwnProperty("amps") == true && typeof energyDetails.amps == "number") {
+            returnValue = energyDetails.amps;
+        }
+
+        return returnValue;
     }
 
-    __EveSmokeGetDetails(optionGetFunction, returnForCharacteristic) {
+    #EveSmokeGetDetails(optionGetFunction, returnForCharacteristic) {
         // returns an encoded value formatted for an Eve Smoke device 
         var returnValue = null;
 
         if (typeof optionGetFunction == "function") this.EveSmokePersist = optionGetFunction(this.EveSmokePersist); // Fill in details we might want to be dynamic
 
-        if (returnForCharacteristic == Characteristic.EveGetConfiguration.UUID) {
+        if (returnForCharacteristic.UUID == HAP.Characteristic.EveGetConfiguration.UUID) {
             var value = util.format(
                 "0002 1800 0302 %s 9b04 %s 8608 %s 1e02 1800 0c",
                 numberToEveHexString(this.EveSmokePersist.firmware, 4),  // firmware version (build xxxx)
@@ -1366,7 +1674,7 @@ class HomeKitHistory {
             returnValue = encodeEveData(value);
         }
 
-        if (returnForCharacteristic == Characteristic.EveDeviceStatus.UUID) {
+        if (returnForCharacteristic.UUID == HAP.Characteristic.EveDeviceStatus.UUID) {
             // Status bits
             //  0 = Smoked Detected
             //  1 = Heat Detected
@@ -1380,7 +1688,7 @@ class HomeKitHistory {
             // 24 & 25 = alarms paused
             // 25 = alarm muted
             var value = 0x00000000;
-            if (this.EveHome.linkedservice.getCharacteristic(Characteristic.SmokeDetected).value == Characteristic.SmokeDetected.SMOKE_DETECTED) value |= (1 << 0);  // 1st bit, smoke detected
+            if (this.EveHome.linkedservice.getCharacteristic(HAP.Characteristic.SmokeDetected).value == HAP.Characteristic.SmokeDetected.SMOKE_DETECTED) value |= (1 << 0);  // 1st bit, smoke detected
             if (this.EveSmokePersist.heatstatus != 0) value |= (1 << 1);    // 2th bit - heat detected
             if (this.EveSmokePersist.alarmtest == true) value |= (1 << 2);    // 4th bit - alarm test running
             if (this.EveSmokePersist.smoketestpassed == false) value |= (1 << 5);   // 5th bit - smoke test OK
@@ -1394,7 +1702,20 @@ class HomeKitHistory {
         return returnValue;
     };
 
-    __EveHistoryStatus(callback) {
+    #EveWaterGuardGetDetails(optionGetFunction) {
+        // returns an encoded value formatted for an Eve Water Guard
+        if (typeof optionGetFunction == "function") this.EveWaterGuardPersist = optionGetFunction(this.EveWaterGuardPersist); // Fill in details we might want to be dynamic
+
+        var value = util.format(
+            "0002 5b00 0302 %s 9b04 %s 8608 %s 4e01 %s %s 1e02 5b00 0c",
+            numberToEveHexString(this.EveWaterGuardPersist.firmware, 4),  // firmware version (build xxxx)
+            numberToEveHexString(Math.floor(new Date() / 1000), 8), // "now" time
+            numberToEveHexString(this.EveWaterGuardPersist.lastalarmtest, 8),    // Not sure why 64bit value???
+            numberToEveHexString(this.EveWaterGuardPersist.muted == true ? 1 : 0, 2));    // Alarm mute status
+        return encodeEveData(value);
+    };
+
+    #EveHistoryStatus(callback) {
         var tempHistory = this.getHistory(this.EveHome.type, this.EveHome.sub); // get flattened history array for easier processing
         var historyTime = (tempHistory.length == 0 ? Math.floor(new Date() / 1000) : tempHistory[tempHistory.length - 1].time);
         this.EveHome.reftime = (tempHistory.length == 0 ? (this.historyData.reset - EPOCH_OFFSET) : (tempHistory[0].time - EPOCH_OFFSET));
@@ -1404,17 +1725,17 @@ class HomeKitHistory {
             "%s 00000000 %s %s %s %s %s %s 000000000101",
             numberToEveHexString(historyTime - this.EveHome.reftime - EPOCH_OFFSET, 8),
             numberToEveHexString(this.EveHome.reftime, 8), // reference time (time of first history??)
-            numberToEveHexString(this.EveHome.fields.trim().match(/([\s]+)/g).length + 1, 2), // Calclate number of fields we have
+            numberToEveHexString(this.EveHome.fields.trim().match(/\S*[0-9]\S*/g).length, 2), // Calclate number of fields we have
             this.EveHome.fields.trim(),    // Fields listed in string. Each field is seperated by spaces
             numberToEveHexString(this.EveHome.count, 4), // count of entries
             numberToEveHexString(this.maxEntries == 0 ? MAX_HISTORY_SIZE : this.maxEntries, 4),  // history max size
             numberToEveHexString(1, 8));  // first entry
             
         callback(null, encodeEveData(value));
-        // this.debug && console.debug(getTimestamp() + " [HISTORY] __EveHistoryStatus: history for '%s:%s' (%s) - Entries %s", this.EveHome.type, this.EveHome.sub, this.EveHome.evetype, this.EveHome.count);
+        // this.#outputLogging("History", true,  "#EveHistoryStatus: history for '%s:%s' (%s) - Entries %s", this.EveHome.type, this.EveHome.sub, this.EveHome.evetype, this.EveHome.count);
     }
 
-    __EveHistoryEntries(callback) {
+    #EveHistoryEntries(callback) {
         // Streams our history data back to EveHome when requested
         var dataStream = "";
         if (this.EveHome.entry <= this.EveHome.count && this.EveHome.send != 0) {
@@ -1424,7 +1745,10 @@ class HomeKitHistory {
             var data = util.format(
                 "%s 0100 0000 81 %s 0000 0000 00 0000",
                 numberToEveHexString(this.EveHome.entry, 8),
-                numberToEveHexString(this.EveHome.reftime, 8)).replace(/ /g, "");
+                numberToEveHexString(this.EveHome.reftime, 8));
+
+            // Format the data string, including calculating the number of "bytes" the data fits into
+            data = data.replace(/ /g, "");
             dataStream += util.format("%s %s", (data.length / 2 + 1).toString(16), data);
 
             for (var i = 0; i < EVEHOME_MAX_STREAM; i++) {
@@ -1434,6 +1758,7 @@ class HomeKitHistory {
                         "%s %s",
                         numberToEveHexString(this.EveHome.entry, 8),
                         numberToEveHexString(historyEntry.time - this.EveHome.reftime - EPOCH_OFFSET, 8));  // Create the common header data for eve entry
+
                     switch (this.EveHome.evetype) {
                         case "aqua" : {
                             // 1f01 2a08 2302
@@ -1558,7 +1883,7 @@ class HomeKitHistory {
                                 numberToEveHexString(historyEntry.temperature * 100, 4), // temperature
                                 numberToEveHexString(historyEntry.humidity * 100, 4), // Humidity
                                 numberToEveHexString(tempTarget * 100, 4), // target temperature for heating
-                                numberToEveHexString(historyEntry.status == 2 ? 100 : historyEntry.status == 1 ? 50 : 0, 2), // 0% valve position = off, 50% = cooling, 100% = heating
+                                numberToEveHexString(historyEntry.status == 2 ? 100 : historyEntry.status == 3 ? 50 : 0, 2), // 0% valve position = off, 50% = cooling, 100% = heating
                                 numberToEveHexString(0, 2), // Thermo target
                                 numberToEveHexString(0, 2)); // Window open status 0 = window closed, 1 = open
                             break;
@@ -1587,9 +1912,15 @@ class HomeKitHistory {
                             console.log("blinds history");
                             break;
                         }
+
+                        case "waterguard" : {
+                            // TODO - What do we send back??
+                            console.log("water guard history");
+                            break;
+                        }
                     }
 
-                    // Format the data string, including calcuating the number of "bytes" the data fits into
+                    // Format the data string, including calculating the number of "bytes" the data fits into
                     data = data.replace(/ /g, "");
                     dataStream += util.format("%s%s", numberToEveHexString(data.length / 2 + 1, 2), data);
                 
@@ -1599,20 +1930,20 @@ class HomeKitHistory {
             }
             if (this.EveHome.entry > this.EveHome.count) {
                 // No more history data to send back
-                // this.debug && console.debug(getTimestamp() + " [HISTORY] __EveHistoryEntries: sent '%s' entries to EveHome ('%s') for '%s:%s'", this.EveHome.send, this.EveHome.evetype, this.EveHome.type, this.EveHome.sub);
+                // this.#outputLogging("History", true,  "#EveHistoryEntries: sent '%s' entries to EveHome ('%s') for '%s:%s'", this.EveHome.send, this.EveHome.evetype, this.EveHome.type, this.EveHome.sub);
                 this.EveHome.send = 0;  // no more to send
                 dataStream += "00";
             }
         } else {
             // We're not transferring any data back
-            // this.debug && console.debug(getTimestamp() + " [HISTORY] __EveHistoryEntries: do we ever get here.....???", this.EveHome.send, this.EveHome.evetype, this.EveHome.type, this.EveHome.sub, this.EveHome.entry);
+            // this.#outputLogging("History", true,  "#EveHistoryEntries: do we ever get here.....???", this.EveHome.send, this.EveHome.evetype, this.EveHome.type, this.EveHome.sub, this.EveHome.entry);
             this.EveHome.send = 0;  // no more to send
             dataStream = "00";
         }
         callback(null, encodeEveData(dataStream));
     }
 
-    __EveHistoryRequest(value, callback) {
+    #EveHistoryRequest(value, callback) {
         // Requesting history, starting at specific entry
         this.EveHome.entry = EveHexStringToNumber(decodeEveData(value).substring(4, 12));    // Starting entry
         if (this.EveHome.entry == 0) {
@@ -1620,14 +1951,24 @@ class HomeKitHistory {
         }
         this.EveHome.send = (this.EveHome.count - this.EveHome.entry + 1);    // Number of entries we're expected to send
         callback();
-        // this.debug && console.debug(getTimestamp() + " [HISTORY] __EveHistoryRequest: requested address", this.EveHome.entry);
+        // this.#outputLogging("History", true,  "#EveHistoryRequest: requested address", this.EveHome.entry);
     }
 
-    __EveSetTime(value, callback) {
+    #EveSetTime(value, callback) {
         // Time stamp from EveHome
         var timestamp = (EPOCH_OFFSET + EveHexStringToNumber(decodeEveData(value)));
         callback();
-        // this.debug && console.debug(getTimestamp() + " [HISTORY] __EveSetTime: timestamp offset", new Date(timestamp * 1000));
+        // this.#outputLogging("History", true,  "#EveSetTime: timestamp offset", new Date(timestamp * 1000));
+    }
+
+    #outputLogging(accessoryName, useConsoleDebug, ...outputMessage) {
+        var timeStamp = String(new Date().getFullYear()).padStart(4, "0") + "-" + String(new Date().getMonth() + 1).padStart(2, "0") + "-" + String(new Date().getDate()).padStart(2, "0") + " " + String(new Date().getHours()).padStart(2, "0") + ":" + String(new Date().getMinutes()).padStart(2, "0") + ":" + String(new Date().getSeconds()).padStart(2, "0");
+        if (useConsoleDebug == false) {
+            console.log(timeStamp + " [" + accessoryName + "] " + util.format(...outputMessage));
+        }
+        if (useConsoleDebug == true) {
+            console.debug(timeStamp + " [" + accessoryName + "] " + util.format(...outputMessage));
+        }
     }
 }
 
@@ -1643,332 +1984,339 @@ function decodeEveData(data) {
 }
 
 // Converts a integer number into a string for EveHome, including formatting to byte width and reverse byte order
-// handles upto 64bit values
+// handles upto 128bit values
 function numberToEveHexString(number, bytes) {
-    if (typeof number != "number") return number;
-    var tempString = "0000000000000000" + Math.floor(number).toString(16);
-    tempString = tempString.slice(-1 * bytes).match(/[a-fA-F0-9]{2}/g).reverse().join('');
+    if (typeof number != "number" || bytes > 32) {
+        return number;
+    }
+    var tempString = "00000000000000000000000000000000" + Math.floor(number).toString(16);
+    tempString = tempString.slice(-1 * bytes).match(/[a-fA-F0-9]{2}/g).reverse().join("");
     return tempString;
 }
 
 // Converts a float number into a string for EveHome, including formatting to byte width and reverse byte order
-// handles upto 64bit values
+// handles upto 128bit values
 function floatToEveHexString(number, bytes) {
-    if (typeof number != "number") return number;
+    if (typeof number != "number" || bytes > 32) {
+        return number;
+    }
     var buf = Buffer.allocUnsafe(4);
     buf.writeFloatBE(number, 0);
-    var tempString = "0000000000000000" + buf.toString("hex");
-    tempString = tempString.slice(-1 * bytes).match(/[a-fA-F0-9]{2}/g).reverse().join('');
+    var tempString = "00000000000000000000000000000000" + buf.toString("hex");
+    tempString = tempString.slice(-1 * bytes).match(/[a-fA-F0-9]{2}/g).reverse().join("");
     return tempString;
 }
 
 // Converts Eve encoded hex string to number
 function EveHexStringToNumber(string) {
     if (typeof string != "string") return string;
-    var tempString = string.match(/[a-fA-F0-9]{2}/g).reverse().join('');
-    return Number(`0x${tempString}`);   // convert to number on return
+    var tempString = string.match(/[a-fA-F0-9]{2}/g).reverse().join("");
+    return Number(parseInt(tempString, 16));   // convert to number on return
 }
 
 // Converts Eve encoded hex string to floating number with optional precision for result
 function EveHexStringToFloat(string, precision) {
     if (typeof string != "string") return string;
-    var tempString = string.match(/[a-fA-F0-9]{2}/g).reverse().join('');
+    var tempString = string.match(/[a-fA-F0-9]{2}/g).reverse().join("");
     var float = Buffer.from(tempString, "hex").readFloatBE(0);
-    return (precision != 0) ? float.toFixed(precision) : float;
-}
-
-function getTimestamp() {
-    const pad = (n,s=2) => (`${new Array(s).fill(0)}${n}`).slice(-s);
-    const d = new Date();
-    
-    return `${pad(d.getFullYear(),4)}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    return Number((precision != 0) ? float.toFixed(precision) : float);
 }
 
 
 // Define HomeKit characteristics
 
 // Eve Reset Total
-Characteristic.EveResetTotal = function() {
-	Characteristic.call(this, "Eve Reset Total", "E863F112-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveResetTotal = function() {
+	HAP.Characteristic.call(this, "Eve Reset Total", "E863F112-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.UINT32,
-        unit: Characteristic.Units.SECONDS, // since 2001/01/01
-		perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY, Characteristic.Perms.WRITE]
+        format: HAP.Characteristic.Formats.UINT32,
+        unit: HAP.Characteristic.Units.SECONDS, // since 2001/01/01
+		perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY, HAP.Characteristic.Perms.WRITE]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveResetTotal, Characteristic);
-Characteristic.EveResetTotal.UUID = "E863F112-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveResetTotal, HAP.Characteristic);
+HAP.Characteristic.EveResetTotal.UUID = "E863F112-079E-48FF-8F27-9C2605A29F52";
 
 // EveHistoryStatus
-Characteristic.EveHistoryStatus = function() {
-	Characteristic.call(this, "Eve History Status", "E863F116-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveHistoryStatus = function() {
+	HAP.Characteristic.call(this, "Eve History Status", "E863F116-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.DATA,
-		perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY, Characteristic.Perms.HIDDEN]
+        format: HAP.Characteristic.Formats.DATA,
+		perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY, HAP.Characteristic.Perms.HIDDEN]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveHistoryStatus, Characteristic);
-Characteristic.EveHistoryStatus.UUID = "E863F116-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveHistoryStatus, HAP.Characteristic);
+HAP.Characteristic.EveHistoryStatus.UUID = "E863F116-079E-48FF-8F27-9C2605A29F52";
 
 // EveHistoryEntries
-Characteristic.EveHistoryEntries = function() {
-	Characteristic.call(this, "Eve History Entries", "E863F117-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveHistoryEntries = function() {
+	HAP.Characteristic.call(this, "Eve History Entries", "E863F117-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.DATA,
-		perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY, Characteristic.Perms.HIDDEN]
+        format: HAP.Characteristic.Formats.DATA,
+		perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY, HAP.Characteristic.Perms.HIDDEN]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveHistoryEntries, Characteristic);
-Characteristic.EveHistoryEntries.UUID = "E863F117-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveHistoryEntries, HAP.Characteristic);
+HAP.Characteristic.EveHistoryEntries.UUID = "E863F117-079E-48FF-8F27-9C2605A29F52";
 
 // EveHistoryRequest
-Characteristic.EveHistoryRequest = function() {
-	Characteristic.call(this, "Eve History Request", "E863F11C-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveHistoryRequest = function() {
+	HAP.Characteristic.call(this, "Eve History Request", "E863F11C-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.DATA,
-		perms: [Characteristic.Perms.WRITE, Characteristic.Perms.HIDDEN]
+        format: HAP.Characteristic.Formats.DATA,
+		perms: [HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.HIDDEN]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveHistoryRequest, Characteristic);
-Characteristic.EveHistoryRequest.UUID = "E863F11C-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveHistoryRequest, HAP.Characteristic);
+HAP.Characteristic.EveHistoryRequest.UUID = "E863F11C-079E-48FF-8F27-9C2605A29F52";
 
 // EveSetTime
-Characteristic.EveSetTime = function() {
-	Characteristic.call(this, "EveHome SetTime", "E863F121-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveSetTime = function() {
+	HAP.Characteristic.call(this, "Eve SetTime", "E863F121-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.DATA,
-		perms: [Characteristic.Perms.WRITE, Characteristic.Perms.HIDDEN]
+        format: HAP.Characteristic.Formats.DATA,
+		perms: [HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.HIDDEN]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveSetTime, Characteristic);
-Characteristic.EveSetTime.UUID = "E863F121-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveSetTime, HAP.Characteristic);
+HAP.Characteristic.EveSetTime.UUID = "E863F121-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveValvePosition = function() {
-	Characteristic.call(this, "Eve Valve Position", "E863F12E-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveValvePosition = function() {
+	HAP.Characteristic.call(this, "Eve Valve Position", "E863F12E-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.UINT8,
-        unit: Characteristic.Units.PERCENTAGE,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.UINT8,
+        unit: HAP.Characteristic.Units.PERCENTAGE,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveValvePosition, Characteristic);
-Characteristic.EveValvePosition.UUID = "E863F12E-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveValvePosition, HAP.Characteristic);
+HAP.Characteristic.EveValvePosition.UUID = "E863F12E-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveLastActivation = function() {
-	Characteristic.call(this, "Eve Last Activation", "E863F11A-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveLastActivation = function() {
+	HAP.Characteristic.call(this, "Eve Last Activation", "E863F11A-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.UINT32,
-        unit: Characteristic.Units.SECONDS,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.UINT32,
+        unit: HAP.Characteristic.Units.SECONDS,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveLastActivation, Characteristic);
-Characteristic.EveLastActivation.UUID = "E863F11A-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveLastActivation, HAP.Characteristic);
+HAP.Characteristic.EveLastActivation.UUID = "E863F11A-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveTimesOpened = function() {
-	Characteristic.call(this, "Eve Times Opened", "E863F129-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveTimesOpened = function() {
+	HAP.Characteristic.call(this, "Eve Times Opened", "E863F129-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.UINT32,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.UINT32,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveTimesOpened, Characteristic);
-Characteristic.EveTimesOpened.UUID = "E863F129-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveTimesOpened, HAP.Characteristic);
+HAP.Characteristic.EveTimesOpened.UUID = "E863F129-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveClosedDuration = function() {
-	Characteristic.call(this, "Eve Closed Duration", "E863F118-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveClosedDuration = function() {
+	HAP.Characteristic.call(this, "Eve Closed Duration", "E863F118-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.UINT32,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.UINT32,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveClosedDuration, Characteristic);
-Characteristic.EveClosedDuration.UUID = "E863F118-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveClosedDuration, HAP.Characteristic);
+HAP.Characteristic.EveClosedDuration.UUID = "E863F118-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveOpenDuration = function() {
-	Characteristic.call(this, "Eve Opened Duration", "E863F119-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveOpenDuration = function() {
+	HAP.Characteristic.call(this, "Eve Opened Duration", "E863F119-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.UINT32,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.UINT32,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveOpenDuration, Characteristic);
-Characteristic.EveOpenDuration.UUID = "E863F119-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveOpenDuration, HAP.Characteristic);
+HAP.Characteristic.EveOpenDuration.UUID = "E863F119-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveProgramCommand = function() {
-	Characteristic.call(this, "Eve Program Command", "E863F12C-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveProgramCommand = function() {
+	HAP.Characteristic.call(this, "Eve Program Command", "E863F12C-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.DATA,
-        perms: [Characteristic.Perms.WRITE]
+        format: HAP.Characteristic.Formats.DATA,
+        perms: [HAP.Characteristic.Perms.WRITE]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveProgramCommand, Characteristic);
-Characteristic.EveProgramCommand.UUID = "E863F12C-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveProgramCommand, HAP.Characteristic);
+HAP.Characteristic.EveProgramCommand.UUID = "E863F12C-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveProgramData = function() {
-	Characteristic.call(this, "Eve Program Data", "E863F12F-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveProgramData = function() {
+	HAP.Characteristic.call(this, "Eve Program Data", "E863F12F-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.DATA,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.DATA,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveProgramData, Characteristic);
-Characteristic.EveProgramData.UUID = "E863F12F-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveProgramData, HAP.Characteristic);
+HAP.Characteristic.EveProgramData.UUID = "E863F12F-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveVoltage = function() {
-	Characteristic.call(this, "Eve Voltage", "E863F10A-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveElectricalVoltage = function() {
+	HAP.Characteristic.call(this, "Eve Voltage", "E863F10A-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.FLOAT,
+        format: HAP.Characteristic.Formats.FLOAT,
         unit: "V",
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveVoltage, Characteristic);
-Characteristic.EveVoltage.UUID = "E863F10A-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveElectricalVoltage, HAP.Characteristic);
+HAP.Characteristic.EveElectricalVoltage.UUID = "E863F10A-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveElectricCurrent = function() {
-	Characteristic.call(this, "Eve Current", "E863F126-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveElectricalCurrent = function() {
+	HAP.Characteristic.call(this, "Eve Current", "E863F126-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.FLOAT,
+        format: HAP.Characteristic.Formats.FLOAT,
         unit: "A",
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveElectricCurrent, Characteristic);
-Characteristic.EveElectricCurrent.UUID = "E863F126-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveElectricalCurrent, HAP.Characteristic);
+HAP.Characteristic.EveElectricalCurrent.UUID = "E863F126-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveTotalConsumption = function() {
-	Characteristic.call(this, "Eve Total Consumption", "E863F10C-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveTotalConsumption = function() {
+	HAP.Characteristic.call(this, "Eve Total Consumption", "E863F10C-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.FLOAT,
+        format: HAP.Characteristic.Formats.FLOAT,
         unit: 'kWh',
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveTotalConsumption, Characteristic);
-Characteristic.EveTotalConsumption.UUID = "E863F10C-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveTotalConsumption, HAP.Characteristic);
+HAP.Characteristic.EveTotalConsumption.UUID = "E863F10C-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveCurrentConsumption = function() {
-	Characteristic.call(this, "Eve Current Consumption", "E863F10D-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveElectricalWattage = function() {
+	HAP.Characteristic.call(this, "Eve Watts", "E863F10D-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.FLOAT,
+        format: HAP.Characteristic.Formats.FLOAT,
         unit: "W",
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveCurrentConsumption, Characteristic);
-Characteristic.EveCurrentConsumption.UUID = "E863F10D-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveElectricalWattage, HAP.Characteristic);
+HAP.Characteristic.EveElectricalWattage.UUID = "E863F10D-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveGetConfiguration = function() {
-	Characteristic.call(this, "Eve Get Configuration", "E863F131-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveGetConfiguration = function() {
+	HAP.Characteristic.call(this, "Eve Get Configuration", "E863F131-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.DATA,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.DATA,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveGetConfiguration, Characteristic);
-Characteristic.EveGetConfiguration.UUID = "E863F131-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveGetConfiguration, HAP.Characteristic);
+HAP.Characteristic.EveGetConfiguration.UUID = "E863F131-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveSetConfiguration = function() {
-	Characteristic.call(this, "Eve Set Configuration", "E863F11D-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveSetConfiguration = function() {
+	HAP.Characteristic.call(this, "Eve Set Configuration", "E863F11D-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.DATA,
-        perms: [Characteristic.Perms.WRITE, Characteristic.Perms.HIDDEN]
+        format: HAP.Characteristic.Formats.DATA,
+        perms: [HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.HIDDEN]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveSetConfiguration, Characteristic);
-Characteristic.EveSetConfiguration.UUID = "E863F11D-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveSetConfiguration, HAP.Characteristic);
+HAP.Characteristic.EveSetConfiguration.UUID = "E863F11D-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveFirmware = function() {
-	Characteristic.call(this, "Eve Firmware", "E863F11E-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveFirmware = function() {
+	HAP.Characteristic.call(this, "Eve Firmware", "E863F11E-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.DATA,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.WRITE, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.DATA,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveFirmware, Characteristic);
-Characteristic.EveFirmware.UUID = "E863F11E-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveFirmware, HAP.Characteristic);
+HAP.Characteristic.EveFirmware.UUID = "E863F11E-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveSensitivity = function() {
-	Characteristic.call(this, "Eve Motion Sensitivity", "E863F120-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveSensitivity = function() {
+	HAP.Characteristic.call(this, "Eve Motion Sensitivity", "E863F120-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.UINT8,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.WRITE, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.UINT8,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.NOTIFY],
         minValue: 0,
         maxValue: 7,
         validValues: [0, 4, 7]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveSensitivity, Characteristic);
-Characteristic.EveSensitivity.UUID = "E863F120-079E-48FF-8F27-9C2605A29F52";
-Characteristic.EveSensitivity.HIGH = 0
-Characteristic.EveSensitivity.MEDIUM = 4
-Characteristic.EveSensitivity.LOW = 7
+util.inherits(HAP.Characteristic.EveSensitivity, HAP.Characteristic);
+HAP.Characteristic.EveSensitivity.UUID = "E863F120-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveSensitivity.HIGH = 0;
+HAP.Characteristic.EveSensitivity.MEDIUM = 4;
+HAP.Characteristic.EveSensitivity.LOW = 7;
 
-Characteristic.EveDuration = function() {
-	Characteristic.call(this, "Eve Motion Duration", "E863F12D-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveDuration = function() {
+	HAP.Characteristic.call(this, "Eve Motion Duration", "E863F12D-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.UINT16,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.WRITE, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.UINT16,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.NOTIFY],
         minValue: 5,
         maxValue: 54000,
         validValues: [5, 10, 20, 30, 60, 120, 300, 600, 1200, 1800, 3600, 7200, 10800, 18000, 36000, 43200, 54000]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveDuration, Characteristic);
-Characteristic.EveDuration.UUID = "E863F12D-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveDuration, HAP.Characteristic);
+HAP.Characteristic.EveDuration.UUID = "E863F12D-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveDeviceStatus = function() {
-	Characteristic.call(this, "Eve Device Status", "E863F134-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveDeviceStatus = function() {
+	HAP.Characteristic.call(this, "Eve Device Status", "E863F134-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.UINT32,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.UINT32,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveDeviceStatus, Characteristic);
-Characteristic.EveDeviceStatus.UUID = "E863F134-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveDeviceStatus, HAP.Characteristic);
+HAP.Characteristic.EveDeviceStatus.UUID = "E863F134-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveDeviceStatus.SMOKE_DETECTED = (1 << 0);
+HAP.Characteristic.EveDeviceStatus.HEAT_DETECTED = (1 << 1);
+HAP.Characteristic.EveDeviceStatus.ALARM_TEST_ACTIVE = (1 << 2);
+HAP.Characteristic.EveDeviceStatus.SMOKE_SENSOR_ERROR = (1 << 5);
+HAP.Characteristic.EveDeviceStatus.HEAT_SENSOR_ERROR = (1 << 7);
+HAP.Characteristic.EveDeviceStatus.SMOKE_CHAMBER_ERROR = (1 << 9);
+HAP.Characteristic.EveDeviceStatus.SMOKE_SENSOR_DEACTIVATED = (1 << 14);
+HAP.Characteristic.EveDeviceStatus.FLASH_STATUS_LED = (1 << 15);
+HAP.Characteristic.EveDeviceStatus.ALARM_PAUSED = (1 << 24);
+HAP.Characteristic.EveDeviceStatus.ALARM_MUTED = (1 << 25);
 
-Characteristic.EveAirPressure = function() {
-	Characteristic.call(this, "Eve Air Pressure", "E863F10F-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveAirPressure = function() {
+	HAP.Characteristic.call(this, "Eve Air Pressure", "E863F10F-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.UINT16,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.UINT16,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
         unit: "hPa",
         minValue: 700,
         maxValue: 1100,
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveAirPressure, Characteristic);
-Characteristic.EveAirPressure.UUID = "E863F10F-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveAirPressure, HAP.Characteristic);
+HAP.Characteristic.EveAirPressure.UUID = "E863F10F-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveElevation = function() {
-	Characteristic.call(this, "Eve Elevation", "E863F130-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveElevation = function() {
+	HAP.Characteristic.call(this, "Eve Elevation", "E863F130-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.INT,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.WRITE, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.INT,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.NOTIFY],
         unit: "m",
         minValue: -430,
         maxValue: 8850,
@@ -1976,14 +2324,14 @@ Characteristic.EveElevation = function() {
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveElevation, Characteristic);
-Characteristic.EveElevation.UUID = "E863F130-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveElevation, HAP.Characteristic);
+HAP.Characteristic.EveElevation.UUID = "E863F130-079E-48FF-8F27-9C2605A29F52";
 
-Characteristic.EveVOCLevel = function() {
-	Characteristic.call(this, "VOC Level", "E863F10B-079E-48FF-8F27-9C2605A29F52");
+HAP.Characteristic.EveVOCLevel = function() {
+	HAP.Characteristic.call(this, "VOC Level", "E863F10B-079E-48FF-8F27-9C2605A29F52");
 	this.setProps({
-        format: Characteristic.Formats.UINT16,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.UINT16,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
         unit: "ppm",
         minValue: 5,
         maxValue: 5000,
@@ -1991,121 +2339,139 @@ Characteristic.EveVOCLevel = function() {
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.EveVOCLevel, Characteristic);
-Characteristic.EveVOCLevel.UUID = "E863F10B-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Characteristic.EveVOCLevel, HAP.Characteristic);
+HAP.Characteristic.EveVOCLevel.UUID = "E863F10B-079E-48FF-8F27-9C2605A29F52";
 
+HAP.Characteristic.EveWeatherTrend = function() {
+	HAP.Characteristic.call(this, "Eve Weather Trend", "E863F136-079E-48FF-8F27-9C2605A29F52");
+	this.setProps({
+        format: HAP.Characteristic.Formats.UINT8,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
+        minValue: 0,
+        maxValue: 15,
+        minStep: 1,
+	});
+	this.value = this.getDefaultValue();
+}
+util.inherits(HAP.Characteristic.EveWeatherTrend, HAP.Characteristic);
+HAP.Characteristic.EveWeatherTrend.UUID = "E863F136-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveWeatherTrend.BLANK = 0; // also: 2, 8, 10
+HAP.Characteristic.EveWeatherTrend.SUN = 1; // also: 9
+HAP.Characteristic.EveWeatherTrend.CLOUDS_SUN = 3; // also: 11
+HAP.Characteristic.EveWeatherTrend.RAIN = 4; // also: 5, 6, 7
+HAP.Characteristic.EveWeatherTrend.RAIN_WIND = 12; // also: 13, 14, 15
 
 // EveHomeHistory Service
-Service.EveHomeHistory = function (displayName, subtype) {
-	Service.call(this, displayName, "E863F007-079E-48FF-8F27-9C2605A29F52", subtype);
+HAP.Service.EveHomeHistory = function (displayName, subtype) {
+	HAP.Service.call(this, displayName, "E863F007-079E-48FF-8F27-9C2605A29F52", subtype);
 
     // Required Characteristics
-    this.addCharacteristic(Characteristic.EveResetTotal);
-    this.addCharacteristic(Characteristic.EveHistoryStatus);
-    this.addCharacteristic(Characteristic.EveHistoryEntries);
-    this.addCharacteristic(Characteristic.EveHistoryRequest);
-    this.addCharacteristic(Characteristic.EveSetTime);
+    this.addCharacteristic(HAP.Characteristic.EveResetTotal);
+    this.addCharacteristic(HAP.Characteristic.EveHistoryStatus);
+    this.addCharacteristic(HAP.Characteristic.EveHistoryEntries);
+    this.addCharacteristic(HAP.Characteristic.EveHistoryRequest);
+    this.addCharacteristic(HAP.Characteristic.EveSetTime);
 }
-util.inherits(Service.EveHomeHistory, Service);
-Service.EveHomeHistory.UUID = "E863F007-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Service.EveHomeHistory, HAP.Service);
+HAP.Service.EveHomeHistory.UUID = "E863F007-079E-48FF-8F27-9C2605A29F52";
 
 // Eve custom air pressure service
-Service.EveAirPressureSensor = function(displayName, subtype) {
-	Service.call(this, displayName, "E863F00A-079E-48FF-8F27-9C2605A29F52", subtype);
+HAP.Service.EveAirPressureSensor = function(displayName, subtype) {
+	HAP.Service.call(this, displayName, "E863F00A-079E-48FF-8F27-9C2605A29F52", subtype);
 
     // Required Characteristics
-    this.addCharacteristic(Characteristic.EveAirPressure);
-    this.addCharacteristic(Characteristic.EveElevation);
+    this.addCharacteristic(HAP.Characteristic.EveAirPressure);
+    this.addCharacteristic(HAP.Characteristic.EveElevation);
 }
-util.inherits(Service.EveAirPressureSensor, Service);
-Service.EveAirPressureSensor.UUID = "E863F00A-079E-48FF-8F27-9C2605A29F52";
+util.inherits(HAP.Service.EveAirPressureSensor, HAP.Service);
+HAP.Service.EveAirPressureSensor.UUID = "E863F00A-079E-48FF-8F27-9C2605A29F52";
 
 
 // Other UUIDs Eve Home recognises
-Characteristic.ApparentTemperature = function() {
-	Characteristic.call(this, "ApparentTemperature", "C1283352-3D12-4777-ACD5-4734760F1AC8");
+HAP.Characteristic.ApparentTemperature = function() {
+	HAP.Characteristic.call(this, "ApparentTemperature", "C1283352-3D12-4777-ACD5-4734760F1AC8");
 	this.setProps({
-        format: Characteristic.Formats.FLOAT,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
-        unit: Characteristic.Units.CELSIUS,
+        format: HAP.Characteristic.Formats.FLOAT,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
+        unit: HAP.Characteristic.Units.CELSIUS,
         minValue: -40,
         maxValue: 100,
         minStep: 0.1
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.ApparentTemperature, Characteristic);
-Characteristic.ApparentTemperature.UUID = "C1283352-3D12-4777-ACD5-4734760F1AC8";
+util.inherits(HAP.Characteristic.ApparentTemperature, HAP.Characteristic);
+HAP.Characteristic.ApparentTemperature.UUID = "C1283352-3D12-4777-ACD5-4734760F1AC8";
 
-Characteristic.CloudCover = function() {
-	Characteristic.call(this, "Cloud Cover", "64392FED-1401-4F7A-9ADB-1710DD6E3897");
+HAP.Characteristic.CloudCover = function() {
+	HAP.Characteristic.call(this, "Cloud Cover", "64392FED-1401-4F7A-9ADB-1710DD6E3897");
 	this.setProps({
-        format: Characteristic.Formats.UINT8,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
-        unit: Characteristic.Units.PERCENTAGE,
+        format: HAP.Characteristic.Formats.UINT8,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
+        unit: HAP.Characteristic.Units.PERCENTAGE,
         minValue: 0,
         maxValue: 100
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.CloudCover, Characteristic);
-Characteristic.CloudCover.UUID = "64392FED-1401-4F7A-9ADB-1710DD6E3897";
+util.inherits(HAP.Characteristic.CloudCover, HAP.Characteristic);
+HAP.Characteristic.CloudCover.UUID = "64392FED-1401-4F7A-9ADB-1710DD6E3897";
 
-Characteristic.Condition = function() {
-	Characteristic.call(this, "Condition", "CD65A9AB-85AD-494A-B2BD-2F380084134D");
+HAP.Characteristic.Condition = function() {
+	HAP.Characteristic.call(this, "Condition", "CD65A9AB-85AD-494A-B2BD-2F380084134D");
 	this.setProps({
-        format: Characteristic.Formats.STRING,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.STRING,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.Condition, Characteristic);
-Characteristic.Condition.UUID = "CD65A9AB-85AD-494A-B2BD-2F380084134D";
+util.inherits(HAP.Characteristic.Condition, HAP.Characteristic);
+HAP.Characteristic.Condition.UUID = "CD65A9AB-85AD-494A-B2BD-2F380084134D";
 
-Characteristic.ConditionCategory = function() {
-	Characteristic.call(this, "Condition Category", "CD65A9AB-85AD-494A-B2BD-2F380084134C");
+HAP.Characteristic.ConditionCategory = function() {
+	HAP.Characteristic.call(this, "Condition Category", "CD65A9AB-85AD-494A-B2BD-2F380084134C");
 	this.setProps({
-        format: Characteristic.Formats.UINT8,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.UINT8,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
         minValue: 0,
         maxValue: 9
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.ConditionCategory, Characteristic);
-Characteristic.ConditionCategory.UUID = "CD65A9AB-85AD-494A-B2BD-2F380084134C";
+util.inherits(HAP.Characteristic.ConditionCategory, HAP.Characteristic);
+HAP.Characteristic.ConditionCategory.UUID = "CD65A9AB-85AD-494A-B2BD-2F380084134C";
 
-Characteristic.DewPoint = function() {
-	Characteristic.call(this, "Dew Point", "095C46E2-278E-4E3C-B9E7-364622A0F501");
+HAP.Characteristic.DewPoint = function() {
+	HAP.Characteristic.call(this, "Dew Point", "095C46E2-278E-4E3C-B9E7-364622A0F501");
 	this.setProps({
-        format: Characteristic.Formats.FLOAT,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
-        unit: Characteristic.Units.CELSIUS,
+        format: HAP.Characteristic.Formats.FLOAT,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
+        unit: HAP.Characteristic.Units.CELSIUS,
         minValue: -40,
         maxValue: 100,
         minStep: 0.1
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.DewPoint, Characteristic);
-Characteristic.DewPoint.UUID = "095C46E2-278E-4E3C-B9E7-364622A0F501";
+util.inherits(HAP.Characteristic.DewPoint, HAP.Characteristic);
+HAP.Characteristic.DewPoint.UUID = "095C46E2-278E-4E3C-B9E7-364622A0F501";
 
-Characteristic.ForecastDay = function() {
-	Characteristic.call(this, "Day", "57F1D4B2-0E7E-4307-95B5-808750E2C1C7");
+HAP.Characteristic.ForecastDay = function() {
+	HAP.Characteristic.call(this, "Day", "57F1D4B2-0E7E-4307-95B5-808750E2C1C7");
 	this.setProps({
-        format: Characteristic.Formats.STRING,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.STRING,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.ForecastDay, Characteristic);
-Characteristic.ForecastDay.UUID = "57F1D4B2-0E7E-4307-95B5-808750E2C1C7";
+util.inherits(HAP.Characteristic.ForecastDay, HAP.Characteristic);
+HAP.Characteristic.ForecastDay.UUID = "57F1D4B2-0E7E-4307-95B5-808750E2C1C7";
 
-Characteristic.MaximumWindSpeed = function() {
-	Characteristic.call(this, "Maximum Wind Speed", "6B8861E5-D6F3-425C-83B6-069945FFD1F1");
+HAP.Characteristic.MaximumWindSpeed = function() {
+	HAP.Characteristic.call(this, "Maximum Wind Speed", "6B8861E5-D6F3-425C-83B6-069945FFD1F1");
 	this.setProps({
-        format: Characteristic.Formats.FLOAT,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.FLOAT,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
         unit: "km/h",
         minValue: 0,
         maxValue: 150,
@@ -2113,203 +2479,203 @@ Characteristic.MaximumWindSpeed = function() {
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.MaximumWindSpeed, Characteristic);
-Characteristic.MaximumWindSpeed.UUID = "6B8861E5-D6F3-425C-83B6-069945FFD1F1";
+util.inherits(HAP.Characteristic.MaximumWindSpeed, HAP.Characteristic);
+HAP.Characteristic.MaximumWindSpeed.UUID = "6B8861E5-D6F3-425C-83B6-069945FFD1F1";
 
-Characteristic.MinimumTemperature = function() {
-	Characteristic.call(this, "Minimum Temperature", "707B78CA-51AB-4DC9-8630-80A58F07E41");
+HAP.Characteristic.MinimumTemperature = function() {
+	HAP.Characteristic.call(this, "Minimum Temperature", "707B78CA-51AB-4DC9-8630-80A58F07E41");
 	this.setProps({
-        format: Characteristic.Formats.FLOAT,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
-        unit: Characteristic.Units.CELSIUS,
+        format: HAP.Characteristic.Formats.FLOAT,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
+        unit: HAP.Characteristic.Units.CELSIUS,
         minValue: -40,
         maxValue: 100,
         minStep: 0.1
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.MinimumTemperature, Characteristic);
-Characteristic.MinimumTemperature.UUID = "707B78CA-51AB-4DC9-8630-80A58F07E41";
+util.inherits(HAP.Characteristic.MinimumTemperature, HAP.Characteristic);
+HAP.Characteristic.MinimumTemperature.UUID = "707B78CA-51AB-4DC9-8630-80A58F07E41";
 
-Characteristic.ObservationStation = function() {
-	Characteristic.call(this, "Observation Station", "D1B2787D-1FC4-4345-A20E-7B5A74D693ED");
+HAP.Characteristic.ObservationStation = function() {
+	HAP.Characteristic.call(this, "Observation Station", "D1B2787D-1FC4-4345-A20E-7B5A74D693ED");
 	this.setProps({
-        format: Characteristic.Formats.STRING,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.STRING,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.ObservationStation, Characteristic);
-Characteristic.ObservationStation.UUID = "D1B2787D-1FC4-4345-A20E-7B5A74D693ED";
+util.inherits(HAP.Characteristic.ObservationStation, HAP.Characteristic);
+HAP.Characteristic.ObservationStation.UUID = "D1B2787D-1FC4-4345-A20E-7B5A74D693ED";
 
-Characteristic.ObservationTime = function() {
-	Characteristic.call(this, "Observation Time", "234FD9F1-1D33-4128-B622-D052F0C402AF");
+HAP.Characteristic.ObservationTime = function() {
+	HAP.Characteristic.call(this, "Observation Time", "234FD9F1-1D33-4128-B622-D052F0C402AF");
 	this.setProps({
-        format: Characteristic.Formats.STRING,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.STRING,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.ObservationTime, Characteristic);
-Characteristic.ObservationTime.UUID = "234FD9F1-1D33-4128-B622-D052F0C402AF";
+util.inherits(HAP.Characteristic.ObservationTime, HAP.Characteristic);
+HAP.Characteristic.ObservationTime.UUID = "234FD9F1-1D33-4128-B622-D052F0C402AF";
 
-Characteristic.Ozone = function() {
-	Characteristic.call(this, "Ozone", "BBEFFDDD-1BCD-4D75-B7CD-B57A90A04D13");
+HAP.Characteristic.Ozone = function() {
+	HAP.Characteristic.call(this, "Ozone", "BBEFFDDD-1BCD-4D75-B7CD-B57A90A04D13");
 	this.setProps({
-        format: Characteristic.Formats.UINT8,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.UINT8,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
         unit: "DU",
         minValue: 0,
         maxValue: 500
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.Ozone, Characteristic);
-Characteristic.Ozone.UUID = "BBEFFDDD-1BCD-4D75-B7CD-B57A90A04D13";
+util.inherits(HAP.Characteristic.Ozone, HAP.Characteristic);
+HAP.Characteristic.Ozone.UUID = "BBEFFDDD-1BCD-4D75-B7CD-B57A90A04D13";
 
-Characteristic.Rain = function() {
-	Characteristic.call(this, "Rain", "F14EB1AD-E000-4EF4-A54F-0CF07B2E7BE7");
+HAP.Characteristic.Rain = function() {
+	HAP.Characteristic.call(this, "Rain", "F14EB1AD-E000-4EF4-A54F-0CF07B2E7BE7");
 	this.setProps({
-        format: Characteristic.Formats.BOOL,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.BOOL,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.Rain, Characteristic);
-Characteristic.Rain.UUID = "F14EB1AD-E000-4EF4-A54F-0CF07B2E7BE7";
+util.inherits(HAP.Characteristic.Rain, HAP.Characteristic);
+HAP.Characteristic.Rain.UUID = "F14EB1AD-E000-4EF4-A54F-0CF07B2E7BE7";
 
-Characteristic.RainLastHour = function() {
-	Characteristic.call(this, "Rain Last Hour", "10C88F40-7EC4-478C-8D5A-BD0C3CCE14B7");
+HAP.Characteristic.RainLastHour = function() {
+	HAP.Characteristic.call(this, "Rain Last Hour", "10C88F40-7EC4-478C-8D5A-BD0C3CCE14B7");
 	this.setProps({
-        format: Characteristic.Formats.UINT16,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.UINT16,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
         unit: "mm",
         minValue: 0,
         maxValue: 200
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.RainLastHour, Characteristic);
-Characteristic.RainLastHour.UUID = "10C88F40-7EC4-478C-8D5A-BD0C3CCE14B7";
+util.inherits(HAP.Characteristic.RainLastHour, HAP.Characteristic);
+HAP.Characteristic.RainLastHour.UUID = "10C88F40-7EC4-478C-8D5A-BD0C3CCE14B7";
 
-Characteristic.TotalRain = function() {
-	Characteristic.call(this, "Total Rain", "CCC04890-565B-4376-B39A-3113341D9E0F");
+HAP.Characteristic.TotalRain = function() {
+	HAP.Characteristic.call(this, "Total Rain", "CCC04890-565B-4376-B39A-3113341D9E0F");
 	this.setProps({
-        format: Characteristic.Formats.UINT16,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.UINT16,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
         unit: "mm",
         minValue: 0,
         maxValue: 2000
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.TotalRain, Characteristic);
-Characteristic.TotalRain.UUID = "CCC04890-565B-4376-B39A-3113341D9E0F";
+util.inherits(HAP.Characteristic.TotalRain, HAP.Characteristic);
+HAP.Characteristic.TotalRain.UUID = "CCC04890-565B-4376-B39A-3113341D9E0F";
 
-Characteristic.RainProbability = function() {
-	Characteristic.call(this, "Rain Probability", "FC01B24F-CF7E-4A74-90DB-1B427AF1FFA3");
+HAP.Characteristic.RainProbability = function() {
+	HAP.Characteristic.call(this, "Rain Probability", "FC01B24F-CF7E-4A74-90DB-1B427AF1FFA3");
 	this.setProps({
-        format: Characteristic.Formats.UINT8,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
-        unit: Characteristic.Units.PERCENTAGE,
+        format: HAP.Characteristic.Formats.UINT8,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
+        unit: HAP.Characteristic.Units.PERCENTAGE,
         minValue: 0,
         maxValue: 100
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.RainProbability, Characteristic);
-Characteristic.RainProbability.UUID = "FC01B24F-CF7E-4A74-90DB-1B427AF1FFA3";
+util.inherits(HAP.Characteristic.RainProbability, HAP.Characteristic);
+HAP.Characteristic.RainProbability.UUID = "FC01B24F-CF7E-4A74-90DB-1B427AF1FFA3";
 
-Characteristic.Snow = function() {
-	Characteristic.call(this, "Snow", "F14EB1AD-E000-4CE6-BD0E-384F9EC4D5DD");
+HAP.Characteristic.Snow = function() {
+	HAP.Characteristic.call(this, "Snow", "F14EB1AD-E000-4CE6-BD0E-384F9EC4D5DD");
 	this.setProps({
-        format: Characteristic.Formats.BOOL,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.BOOL,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.Snow, Characteristic);
-Characteristic.Snow.UUID = "F14EB1AD-E000-4CE6-BD0E-384F9EC4D5DD";
+util.inherits(HAP.Characteristic.Snow, HAP.Characteristic);
+HAP.Characteristic.Snow.UUID = "F14EB1AD-E000-4CE6-BD0E-384F9EC4D5DD";
 
-Characteristic.SolarRadiation = function() {
-	Characteristic.call(this, "Solar Radiation", "1819A23E-ECAB-4D39-B29A-7364D299310B");
+HAP.Characteristic.SolarRadiation = function() {
+	HAP.Characteristic.call(this, "Solar Radiation", "1819A23E-ECAB-4D39-B29A-7364D299310B");
 	this.setProps({
-        format: Characteristic.Formats.UINT16,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.UINT16,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
         unit: "W/m²",
         minValue: 0,
         maxValue: 2000
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.SolarRadiation, Characteristic);
-Characteristic.SolarRadiation.UUID = "1819A23E-ECAB-4D39-B29A-7364D299310B";
+util.inherits(HAP.Characteristic.SolarRadiation, HAP.Characteristic);
+HAP.Characteristic.SolarRadiation.UUID = "1819A23E-ECAB-4D39-B29A-7364D299310B";
 
-Characteristic.SunriseTime = function() {
-	Characteristic.call(this, "Sunrise", "0D96F60E-3688-487E-8CEE-D75F05BB3008");
+HAP.Characteristic.SunriseTime = function() {
+	HAP.Characteristic.call(this, "Sunrise", "0D96F60E-3688-487E-8CEE-D75F05BB3008");
 	this.setProps({
-        format: Characteristic.Formats.STRING,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.STRING,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.SunriseTime, Characteristic);
-Characteristic.SunriseTime.UUID = "0D96F60E-3688-487E-8CEE-D75F05BB3008";
+util.inherits(HAP.Characteristic.SunriseTime, HAP.Characteristic);
+HAP.Characteristic.SunriseTime.UUID = "0D96F60E-3688-487E-8CEE-D75F05BB3008";
 
-Characteristic.SunsetTime = function() {
-	Characteristic.call(this, "Sunset", "3DE24EE0-A288-4E15-A5A8-EAD2451B727C");
+HAP.Characteristic.SunsetTime = function() {
+	HAP.Characteristic.call(this, "Sunset", "3DE24EE0-A288-4E15-A5A8-EAD2451B727C");
 	this.setProps({
-        format: Characteristic.Formats.STRING,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.STRING,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.SunsetTime, Characteristic);
-Characteristic.SunsetTime.UUID = "3DE24EE0-A288-4E15-A5A8-EAD2451B727C";
+util.inherits(HAP.Characteristic.SunsetTime, HAP.Characteristic);
+HAP.Characteristic.SunsetTime.UUID = "3DE24EE0-A288-4E15-A5A8-EAD2451B727C";
 
-Characteristic.UVIndex = function() {
-	Characteristic.call(this, "UV Index", "05BA0FE0-B848-4226-906D-5B64272E05CE");
+HAP.Characteristic.UVIndex = function() {
+	HAP.Characteristic.call(this, "UV Index", "05BA0FE0-B848-4226-906D-5B64272E05CE");
 	this.setProps({
-        format: Characteristic.Formats.UINT8,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.UINT8,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
         minValue: 0,
         maxValue: 16
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.UVIndex, Characteristic);
-Characteristic.UVIndex.UUID = "05BA0FE0-B848-4226-906D-5B64272E05CE";
+util.inherits(HAP.Characteristic.UVIndex, HAP.Characteristic);
+HAP.Characteristic.UVIndex.UUID = "05BA0FE0-B848-4226-906D-5B64272E05CE";
 
-Characteristic.Visibility = function() {
-	Characteristic.call(this, "Visibility", "D24ECC1E-6FAD-4FB5-8137-5AF88BD5E857");
+HAP.Characteristic.Visibility = function() {
+	HAP.Characteristic.call(this, "Visibility", "D24ECC1E-6FAD-4FB5-8137-5AF88BD5E857");
 	this.setProps({
-        format: Characteristic.Formats.UINT8,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.UINT8,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
         unit: "km",
         minValue: 0,
         maxValue: 100
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.Visibility, Characteristic);
-Characteristic.Visibility.UUID = "D24ECC1E-6FAD-4FB5-8137-5AF88BD5E857";
+util.inherits(HAP.Characteristic.Visibility, HAP.Characteristic);
+HAP.Characteristic.Visibility.UUID = "D24ECC1E-6FAD-4FB5-8137-5AF88BD5E857";
 
-Characteristic.WindDirection = function() {
-	Characteristic.call(this, "Wind Direction", "46F1284C-1912-421B-82F5-EB75008B167E");
+HAP.Characteristic.WindDirection = function() {
+	HAP.Characteristic.call(this, "Wind Direction", "46F1284C-1912-421B-82F5-EB75008B167E");
 	this.setProps({
-        format: Characteristic.Formats.STRING,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
+        format: HAP.Characteristic.Formats.STRING,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.WindDirection, Characteristic);
-Characteristic.WindDirection.UUID = "46F1284C-1912-421B-82F5-EB75008B167E";
+util.inherits(HAP.Characteristic.WindDirection, HAP.Characteristic);
+HAP.Characteristic.WindDirection.UUID = "46F1284C-1912-421B-82F5-EB75008B167E";
 
-Characteristic.WindSpeed = function() {
-	Characteristic.call(this, "Wind Speed", "49C8AE5A-A3A5-41AB-BF1F-12D5654F9F41");
+HAP.Characteristic.WindSpeed = function() {
+	HAP.Characteristic.call(this, "Wind Speed", "49C8AE5A-A3A5-41AB-BF1F-12D5654F9F41");
 	this.setProps({
-        format: Characteristic.Formats.FLOAT,
-        perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY],
+        format: HAP.Characteristic.Formats.FLOAT,
+        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
         unit: "km/h",
         minValue: 0,
         maxValue: 150,
@@ -2317,7 +2683,7 @@ Characteristic.WindSpeed = function() {
 	});
 	this.value = this.getDefaultValue();
 }
-util.inherits(Characteristic.WindSpeed, Characteristic);
-Characteristic.WindSpeed.UUID = "49C8AE5A-A3A5-41AB-BF1F-12D5654F9F41";
+util.inherits(HAP.Characteristic.WindSpeed, HAP.Characteristic);
+HAP.Characteristic.WindSpeed.UUID = "49C8AE5A-A3A5-41AB-BF1F-12D5654F9F41";
 
 module.exports = HomeKitHistory;

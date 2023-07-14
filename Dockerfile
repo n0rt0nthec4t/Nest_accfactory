@@ -13,6 +13,7 @@ COPY package.json ./
 COPY Nest_accfactory.js ./
 COPY Nest_camera_*.jpg ./
 COPY HomeKitHistory.js ./
+COPY HomeKitDevice.js ./
 COPY nexusstreamer.js ./
 
 # perform installation based on details in package.json
@@ -27,4 +28,4 @@ LABEL org.opencontainers.image.title="Nest_accfactory"
 LABEL org.opencontainers.image.description="HomeKit integration for Nest devices based on HAP-NodeJS library"
 LABEL org.opencontainers.image.url="https://github.com/n0rt0nthec4t/Nest_accfactory"
 LABEL org.opencontainers.image.authors="n0rt0nthec4t@outlook.com"
-LABEL org.opencontainers.image.version="v0.1.1"
+LABEL org.opencontainers.image.version="v0.1.2"
