@@ -1781,8 +1781,8 @@ const WEATHERPOLLING = 300000;                                              // R
 const SUBSCRIBETIMEOUT = (5 * 60 * 1000)                                    // Timeout for no subscription data
 const NESTAPITIMEOUT = 10000;                                               // Calls to Nest API timeout
 const USERAGENT = "Nest/5.69.0 (iOScom.nestlabs.jasper.release) os=15.6";   // User Agent string
-const REFERER = "https://home.nest.com"                                     // Which hist is "actually" doing the request
-const CAMERAAPIHOST = "https://webapi.camera.home.nest.com";                // Root URL for Camera system API
+const REFERER = "https://home.ft.nest.com"                                     // Which hist is "actually" doing the request
+const CAMERAAPIHOST = "https://webapi.camera.home.ft.nest.com";                // Root URL for Camera system API
 const TEMPSENSORONLINETIMEOUT = (3600 * 4);                                 // Temp sensor online reporting timeout                    
 
 
@@ -1888,7 +1888,7 @@ class NestSystem {
         }
 
         // We have a token, so open Nest session to get further details we require
-        await axios.get("https://home.nest.com/session", {headers: {"user-agent": USERAGENT, "Authorization": "Basic " + tempToken} })
+        await axios.get("https://home.ft.nest.com/session", {headers: {"user-agent": USERAGENT, "Authorization": "Basic " + tempToken} })
         .then((response) => {
             if (typeof response.status != "number" || response.status != 200) {
                 throw new Error("Nest Session API get failed with error");
@@ -1927,7 +1927,7 @@ class NestSystem {
 
             // Fetch other details for any doorbells/cameras we have, such as activity zones etc. We'll merge this into the Nest structure for processing
             this.rawData.quartz && await Promise.all(Object.entries(this.rawData.quartz).map(async ([nestStructureID]) => {
-                this.rawData.quartz[nestStructureID].nexus_api_nest_domain_host = this.rawData.quartz[nestStructureID].nexus_api_http_server_url.replace(/dropcam.com/ig, "camera.home.nest.com");  // avoid extra API call to get this detail by simple domain name replace
+                this.rawData.quartz[nestStructureID].nexus_api_nest_domain_host = this.rawData.quartz[nestStructureID].nexus_api_http_server_url.replace(/dropcam.com/ig, "camera.home.ft.nest.com");  // avoid extra API call to get this detail by simple domain name replace
                 this.rawData.quartz[nestStructureID].activity_zones = [];  // no activity zones yet
                 this.rawData.quartz[nestStructureID].alerts = [];  // no active alerts yet
                 this.rawData.quartz[nestStructureID].properties = [];  // no properties yet
@@ -2328,7 +2328,7 @@ class NestSystem {
             tempDevice.websocket_nexustalk_host = camera.websocket_nexustalk_host;
             tempDevice.streaming_enabled = (camera.streaming_state.includes("enabled") ? true : false);
             tempDevice.nexus_api_http_server_url = camera.nexus_api_http_server_url;
-            tempDevice.nexus_api_nest_domain_host = camera.nexus_api_http_server_url.replace(/dropcam.com/ig, "camera.home.nest.com");  // avoid extra API call to get this detail by simple domain name replace
+            tempDevice.nexus_api_nest_domain_host = camera.nexus_api_http_server_url.replace(/dropcam.com/ig, "camera.home.ft.nest.com");  // avoid extra API call to get this detail by simple domain name replace
             tempDevice.online = (camera.streaming_state.includes("offline") ? false : true);
             tempDevice.audio_enabled = camera.audio_input_enabled;
             tempDevice.capabilities = camera.capabilities;
@@ -3063,7 +3063,7 @@ function scaleValue(value, sourceRangeMin, sourceRangeMax, targetRangeMin, targe
 }
 
 function validateFFMPEGBinary() {
-    // Validates if the ffmpeg binary has been complied to support the required libraries we need for doorbell/camera support
+    // Validates if the ffmpeg binary has been compiled to support the required libraries we need for doorbell/camera support
     var ffmpegProcess = spawnSync(pathToFFMPEG || "ffmpeg", ["-version"], { env: process.env });
     if (ffmpegProcess.stdout == null) {
         // Since we didn't get a standard output handle, we'll assume the ffmpeg binarie is missing AND/OR failed to start correctly
