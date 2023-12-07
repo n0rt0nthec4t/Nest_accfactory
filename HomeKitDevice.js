@@ -15,7 +15,7 @@
 //
 // HomeKitDevice.HOMEKITHISTORY - HomeKit History module
 //
-// Code version 13/7/2023
+// Code version 18/7/2023
 // Mark Hulskamp
 
 "use strict";
@@ -25,6 +25,7 @@ var HAP = require("hap-nodejs");
 
 // Define nodejs module requirements
 var util = require("util");
+
 
 class HomeKitDevice {
     constructor(HomeKitAccessoryName, HomeKitPairingCode, HomeKitMDNSAdvertiser, uniqueUUIDForDevice, currentDeviceData, globalEventEmitter) {
@@ -88,7 +89,7 @@ class HomeKitDevice {
 
         // Publish accessory on local network and push onto export array for HAP-NodeJS "accessory factory"
         this.HomeKitAccessory.publish({username: this.HomeKitAccessory.username, pincode: this.HomeKitAccessory.pincode, category: this.HomeKitAccessory.category, advertiser: this.mDNSAdvertiser});
-        this.#outputLogging("Advertising '%s (%s)' as '%s' to local network for HomeKit", (this.deviceData.location == "" ? this.deviceData.description : this.deviceData.description + " - " + this.deviceData.location), this.HomeKitAccessory.username, this.HomeKitAccessory.displayName);
+        this.#outputLogging("Advertising '%s (%s)' as '%s' to local network. HomeKit pairing code is '%s'", (this.deviceData.location == "" ? this.deviceData.description : this.deviceData.description + " - " + this.deviceData.location), this.HomeKitAccessory.username, this.HomeKitAccessory.displayName, this.HomeKitAccessory.pincode);
     }
 
     remove() {
