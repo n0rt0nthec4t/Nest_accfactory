@@ -113,6 +113,7 @@ The options available are within the configuration file are listed below. Some o
 |----------------------------|-------------------------|-------------------------------------------------------------------------------------------|--------------|
 | GoogleToken                |                         | Google cookie token object {"issuetoken": "xxx", "cookie": "xxx" }                        | global       |
 | SessionToken               |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
+| FieldTest                  | true, false             | Enables the use of FieldTest accounts                                                     | global       |             
 | EveApp                     | true, false             | Integration with Evehome App. Default is true                                             | global/local |
 | Weather                    | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
 | Debug                      | true, false             | Turns debugging on or off. Default is off                                                 | global       |
@@ -143,7 +144,12 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                                      |
 |------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.1.2           | Code updates and fixed                                                                                                                       |
+| v0.1.3           | Code updates and fixes                                                                                                                       |
+|                  | Added option to use Nest/Google field test accounts                                                                                          |
+|                  | Removed package dependancy around using ffmpeg-for-homebridge. You'll need to provide your own ffmpeg binary or manually install             |
+|                  | ffmpeg-for-homebridge v0.1.0 (v0.2.0 removes required libraries, specfically libspeex                                                        |
+|                  | Docker hosted version includes required ffmpeg binary at ffmpeg 6.1                                                                          |
+| v0.1.2           | Code updates and fixes                                                                                                                       |
 |                  | Added option to enable HomeKit switch to silence Nest Hello indoor chiming                                                                   |
 | v0.1.1           | Minor code fixes.                                                                                                                            |
 | v0.1.0           | Removes Google refresh token method as nolonger supported. Switches to Google cookie method                                                  |
