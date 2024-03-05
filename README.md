@@ -115,6 +115,7 @@ The options available are within the configuration file are listed below. Some o
 | SessionToken               |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
 | FieldTest                  | true, false             | Enables the use of FieldTest accounts                                                     | global       |             
 | EveApp                     | true, false             | Integration with Evehome App. Default is true                                             | global/local |
+| HomeKitCode                |                         | HomeKit pairing code in format of "xxx-xx-xxx". Default is 031-45-154                     | global/local |
 | Weather                    | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
 | Debug                      | true, false             | Turns debugging on or off. Default is off                                                 | global       |
 | mDNS                       | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is bonjour                                        | global       |
@@ -130,7 +131,7 @@ The options available are within the configuration file are listed below. Some o
 | Option.indoor_chime_switch | true, false             | Exposes a switch in HomeKIt to disable/enable indoor chime on Nest Hello. Default is false| local        |
 
 ## HomeKit Pairing
-Once configured and running, any non-excluded devices can be paired in HomeKit using the pairing code **031-45-154**
+Once configured and running, any non-excluded devices can be paired in HomeKit using the default pairing code of **031-45-154**  This can be overidden via the configuration file as above
 
 ## Docker Image
 
@@ -144,6 +145,9 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                                      |
 |------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| v0.1.5           | Support for Nest devices using protobuf protocols                                                                                            |
+|                  | Added option to specifiy the HomeKit pairing code                                                                                            |
+| v0.1.4           | Code updates and fixes                                                                                                                       |
 | v0.1.3           | Code updates and fixes                                                                                                                       |
 |                  | Added option to use Nest/Google field test accounts                                                                                          |
 |                  | Removed package dependancy around using ffmpeg-for-homebridge. You'll need to provide your own ffmpeg binary or manually install             |
