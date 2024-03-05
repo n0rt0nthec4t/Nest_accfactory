@@ -69,8 +69,7 @@ Nest_config.json is the configuration file where various options can be. An exam
 ```
 {
     "SessionToken" : "<nest session token>",
-    "HKSV" : true,
-    "H264Encoder" : "copy"
+    "HKSV" : true
 }
 ```
 
@@ -82,8 +81,7 @@ or
         "issuetoken" : "<google issue token url>",
         "cookie" : "<google cookie>"
     },
-    "HKSV" : true,
-    "H264Encoder" : "copy"
+    "HKSV" : true
 }
 ```
 
@@ -98,8 +96,6 @@ An advanced configuration example is below
     },
     "SERIAL2" : {
         "HKSV" : true,
-        "H264EncoderLive" : "libx264",
-        "H264EncoderRecord" : "libx264",
         "MotionCoolDown" : 2
     },
 }
@@ -121,9 +117,6 @@ The options available are within the configuration file are listed below. Some o
 | mDNS                       | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is bonjour                                        | global       |
 | HKSV                       | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras. Default is off.           | global/local |
 | HKSVPreBuffer              | seconds or milliseconds | Amount of time the pre-buffer for HomeKit Secure Video holds data. Default is 15 seconds  | global/local |
-| H264Encoder                | copy, libx264, h264_omx | H264 encoder ffmpeg used for both live video and HKSV recording                           | global/local |
-| H264EncoderLive            | copy, libx264, h264_omx | H264 encoder ffmpeg used for live video. Default is copy                                  | global/local |
-| H264EncoderRecord          | copy, libx264, h264_omx | H264 encoder ffmpeg used for HKSV recording. Default is libx264                           | global/local |
 | MotionCooldown             | seconds or milliseconds | Ignore motion detection for this time once triggered. Default is 1 minute                 | global/local |
 | PersonCooldown             | seconds or milliseconds | Ignore person detection for this time once triggered (Non HKSV only) Default is 2 minutes | global/local |
 | DoorbellCooldown           | seconds or milliseconds | Ignore doorbell button pressed for this time once triggered Default is 1 minute           | global/local |
