@@ -31,22 +31,16 @@
     "url": "https://github.com/n0rt0nthec4t/HAP-NodeJS-Accessories/issues"
   },
   "homepage": "https://github.com/n0rt0nthec4t/HAP-NodeJS-Accessories",
-  "files": [
-    "Nest_accfactory.js",
-    "nexusstreamer.js",
-    "HomeKitHistory.js",
-    "Nest_camera_off.jpg",
-    "Nest_camera_offline.jpg",
-    "Nest_camera_connecting.jpg"
-  ],
   "engines": {
-    "node": ">=15.4.0",
-    "hap-nodejs": ">=0.10.3"
+    "node": ">=17.0.0",
+    "hap-nodejs": ">=0.11.1"
   },
   "dependencies": {
-    "hap-nodejs": ">=0.10.3",
-    "axios": ">=1.2.1",
+    "hap-nodejs": ">=0.11.1",
+    "axios": ">=1.6.7",
     "pbf": ">=3.2.1",
-    "ws": ">=7.5.6"
+    "ws": ">=8.16.0",
+    "protobufjs": ">=7.2.6",
+    "ip": ">=2.0.1"
   }
 }

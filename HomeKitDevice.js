@@ -7,7 +7,6 @@
 // serial_number
 // software_version
 // description
-// location
 // manufacturer
 // model
 //
@@ -15,7 +14,7 @@
 //
 // HomeKitDevice.HOMEKITHISTORY - HomeKit History module
 //
-// Code version 18/7/2023
+// Code version 18/4/2024
 // Mark Hulskamp
 
 "use strict";
@@ -32,7 +31,7 @@ class HomeKitDevice {
         this.eventEmitter = null;                               // Event emitter to use. Allow comms from other objects
         
         this.deviceUUID = uniqueUUIDForDevice;                  // Unique UUID for this device. Used for event messaging to this device4
-        this.deviceData = currentDeviceData;                    // Current data for the device
+        this.deviceData = currentDeviceData;                    // Make copy of current data and store in this object
        
         this.HomeKitAccessory = null;                           // HomeKit Accessory object
         this.HomeKitManufacturerName = HomeKitAccessoryName;    // HomeKit device manufacturer name. Used for logging output prefix also
@@ -57,7 +56,6 @@ class HomeKitDevice {
             (this.deviceData.hasOwnProperty("serial_number") == false && typeof this.deviceData.serial_number != "string" && this.deviceData.serial_number == "") ||
             (this.deviceData.hasOwnProperty("software_version") == false && typeof this.deviceData.software_version != "string" && this.deviceData.software_version == "") ||
             (this.deviceData.hasOwnProperty("description") == false && typeof this.deviceData.description != "string" && this.deviceData.description == "") ||
-            (this.deviceData.hasOwnProperty("location") == false && typeof this.deviceData.location != "string") ||
             (this.deviceData.hasOwnProperty("model") == false && typeof this.deviceData.model != "string" && this.deviceData.model == "") ||
             this.HomeKitAccessory != null ||
             mDNSAdvertiseName == "") {
@@ -80,20 +78,21 @@ class HomeKitDevice {
         }
 
         try {
-            this.addHomeKitServices((this.deviceData.location == "" ? this.deviceData.description : this.deviceData.description + " - " + this.deviceData.location));
+            this.addHomeKitServices(this.deviceData.description);
         } catch (error) {
-            this.#outputLogging("addHomeKitServices call for device '%s' on '%s' failed. Error was", this.HomeKitAccessory.displayName, this.HomeKitAccessory.username, error);
+            this.#outputLogging("addHomeKitServices call for device '%s' failed. Error was", this.deviceData.description, error);
         }
 
-        this.update(this.deviceData, true);  // perform an initial update using current data
+        // perform an initial update using current data
+        this.update(this.deviceData, true);
 
         // Publish accessory on local network and push onto export array for HAP-NodeJS "accessory factory"
         this.HomeKitAccessory.publish({username: this.HomeKitAccessory.username, pincode: this.HomeKitAccessory.pincode, category: this.HomeKitAccessory.category, advertiser: this.mDNSAdvertiser});
-        this.#outputLogging("Advertising '%s (%s)' as '%s' to local network. HomeKit pairing code is '%s'", (this.deviceData.location == "" ? this.deviceData.description : this.deviceData.description + " - " + this.deviceData.location), this.HomeKitAccessory.username, this.HomeKitAccessory.displayName, this.HomeKitAccessory.pincode);
+        this.#outputLogging("Advertising '%s' as '%s' to local network. HomeKit pairing code is '%s'", this.deviceData.description, this.HomeKitAccessory.displayName, this.HomeKitAccessory.pincode);
     }
 
     remove() {
-        this.#outputLogging("Device '%s' on '%s' has been removed", this.HomeKitAccessory.displayName, this.HomeKitAccessory.username);
+        this.#outputLogging("Device '%s' has been removed", this.deviceData.description);
 
         if (this.eventEmitter != null) {
             // Remove listener for "messages"
@@ -103,7 +102,7 @@ class HomeKitDevice {
         try {
             this.removeHomeKitServices(); 
         } catch (error) {
-            this.#outputLogging("removeHomeKitServices call for device '%s' on '%s' failed. Error was", this.HomeKitAccessory.displayName, this.HomeKitAccessory.username, error);
+            this.#outputLogging("removeHomeKitServices call for device '%s' failed. Error was", this.deviceData.description, error);
         }
  
         this.HomeKitAccessory.unpublish();
@@ -146,15 +145,20 @@ class HomeKitDevice {
                 this.HomeKitAccessory.getService(HAP.Service.AccessoryInformation).updateCharacteristic(HAP.Characteristic.FirmwareRevision, updatedDeviceData.software_version);
             }
 
+            if (updatedDeviceData.hasOwnProperty("serial_number") == true && updatedDeviceData.serial_number != this.deviceData.serial_number) {
+                // Update serial number
+                this.HomeKitAccessory.getService(HAP.Service.AccessoryInformation).updateCharacteristic(HAP.Characteristic.SerialNumber, updatedDeviceData.serial_number);
+            }
+
             if (updatedDeviceData.hasOwnProperty("online") == true && updatedDeviceData.online != this.deviceData.online) {
                 // Update online/offline status
-                this.#outputLogging("Device '%s' on '%s' is %s", this.HomeKitAccessory.displayName, this.HomeKitAccessory.username, (updatedDeviceData.online == true ? "online" : "offline"));
+                this.#outputLogging("Device '%s' is %s", this.deviceData.description, (updatedDeviceData.online == true ? "online" : "offline"));
             }
 
             try {
                 this.updateHomeKitServices(updatedDeviceData);  // Pass updated data on for accessory to process as it needs
             } catch (error) {
-                this.#outputLogging("updateHomeKitServices call for device '%s' on '%s' failed. Error was", this.HomeKitAccessory.displayName, this.HomeKitAccessory.username, error);
+                this.#outputLogging("updateHomeKitServices call for device '%s' failed. Error was", this.deviceData.description, error);
             }
             this.deviceData = updatedDeviceData;    // Finally, update our internally stored data about the device
         }
@@ -206,7 +210,7 @@ class HomeKitDevice {
                 try {
                     this.messageHomeKitServices(messageType, messageData);
                 } catch (error) {
-                    this.#outputLogging("messageHomeKitServices call for device '%s' on '%s' failed. Error was", this.HomeKitAccessory.displayName, this.HomeKitAccessory.username, error);
+                    this.#outputLogging("messageHomeKitServices call for device '%s' failed. Error was", this.deviceData.description, error);
                 }
                 break;
             }
