@@ -138,8 +138,9 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                                      |
 |------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.1.5           | Support for Nest devices using protobuf protocols                                                                                            |
+| v0.1.5           | Support for Nest devices using protobuf protocols. Mainly Thermostat(s) and Temperature Sensors                                              |
 |                  | Added option to specifiy the HomeKit pairing code                                                                                            |
+|                  | Docker hosted version includes required ffmpeg binary at ffmpeg 7.0                                                                          |
 | v0.1.4           | Code updates and fixes                                                                                                                       |
 | v0.1.3           | Code updates and fixes                                                                                                                       |
 |                  | Added option to use Nest/Google field test accounts                                                                                          |
