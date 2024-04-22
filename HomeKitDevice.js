@@ -3,6 +3,7 @@
 // This is the base class for all HomeKit accessories we code to
 //
 // The deviceData structure should, at a minimum contain the following elements. These also need to be a "string" type
+// uuid
 // mac_address
 // serial_number
 // software_version
@@ -14,7 +15,7 @@
 //
 // HomeKitDevice.HOMEKITHISTORY - HomeKit History module
 //
-// Code version 18/4/2024
+// Code version 22/4/2024
 // Mark Hulskamp
 
 "use strict";
@@ -24,34 +25,30 @@ var HAP = require("hap-nodejs");
 
 // Define nodejs module requirements
 var util = require("util");
+var path = require("path");
+var fs = require("fs");
 
 
 class HomeKitDevice {
-    constructor(HomeKitAccessoryName, HomeKitPairingCode, HomeKitMDNSAdvertiser, uniqueUUIDForDevice, currentDeviceData, globalEventEmitter) {
+    constructor(HomeKitAccessoryName, HomeKitPairingCode, HomeKitMDNSAdvertiser, initialDeviceData, globalEventEmitter) {
         this.eventEmitter = null;                               // Event emitter to use. Allow comms from other objects
-        
-        this.deviceUUID = uniqueUUIDForDevice;                  // Unique UUID for this device. Used for event messaging to this device4
-        this.deviceData = currentDeviceData;                    // Make copy of current data and store in this object
-       
+        this.deviceData = initialDeviceData;                    // Make copy of current data and store in this object
         this.HomeKitAccessory = null;                           // HomeKit Accessory object
         this.HomeKitManufacturerName = HomeKitAccessoryName;    // HomeKit device manufacturer name. Used for logging output prefix also
         this.HomeKitHistory = null;                             // History logging service
         this.HomeKitPairingCode = HomeKitPairingCode;           // HomeKit pairing code
-
         this.mDNSAdvertiser = HomeKitMDNSAdvertiser;            // MDNS Provider to use for this device
 
         // Validate if globalEventEmitter object passed to us is an instance of EventEmitter
         if (globalEventEmitter instanceof require("events").EventEmitter == true) {
             this.eventEmitter = globalEventEmitter; // Store
-
-            // Setup event listener to process "messages" to/from our device
-            this.eventEmitter.addListener(this.deviceUUID, this.#message.bind(this));
         }
     }
 
     // Class functions
     add(mDNSAdvertiseName, HomeKitAccessoryCategory, useHistoryService) {
         if (typeof this.deviceData != "object" || typeof HAP.Accessory.Categories[HomeKitAccessoryCategory] == "undefined" ||  typeof mDNSAdvertiseName != "string" || typeof useHistoryService != "boolean" ||
+            (this.deviceData.hasOwnProperty("uuid") == false && typeof this.deviceData.uuid != "string" && this.deviceData.uuid == "") || 
             (this.deviceData.hasOwnProperty("mac_address") == false && typeof this.deviceData.mac_address != "string" && this.deviceData.mac_address == "") || 
             (this.deviceData.hasOwnProperty("serial_number") == false && typeof this.deviceData.serial_number != "string" && this.deviceData.serial_number == "") ||
             (this.deviceData.hasOwnProperty("software_version") == false && typeof this.deviceData.software_version != "string" && this.deviceData.software_version == "") ||
@@ -63,7 +60,11 @@ class HomeKitDevice {
             return;
         }
 
-        this.HomeKitAccessory = exports.accessory = new HAP.Accessory(mDNSAdvertiseName, HAP.uuid.generate("hap-nodejs:accessories:" + this.deviceData.manufacturer.toLowerCase() + "_" + this.deviceData.serial_number));
+        // Setup event listener to process "messages" to/from our device
+        this.eventEmitter.addListener(this.deviceData.uuid, this.#message.bind(this));
+
+        // Create the HomeKit accessory and set accessory information
+        this.HomeKitAccessory = new HAP.Accessory(mDNSAdvertiseName, HAP.uuid.generate("hap-nodejs:accessories:" + this.deviceData.manufacturer.toLowerCase() + "_" + this.deviceData.serial_number));
         this.HomeKitAccessory.username = this.deviceData.mac_address;
         this.HomeKitAccessory.pincode = this.HomeKitPairingCode;
         this.HomeKitAccessory.category = HomeKitAccessoryCategory;
@@ -86,17 +87,39 @@ class HomeKitDevice {
         // perform an initial update using current data
         this.update(this.deviceData, true);
 
-        // Publish accessory on local network and push onto export array for HAP-NodeJS "accessory factory"
-        this.HomeKitAccessory.publish({username: this.HomeKitAccessory.username, pincode: this.HomeKitAccessory.pincode, category: this.HomeKitAccessory.category, advertiser: this.mDNSAdvertiser});
-        this.#outputLogging("Advertising '%s' as '%s' to local network. HomeKit pairing code is '%s'", this.deviceData.description, this.HomeKitAccessory.displayName, this.HomeKitAccessory.pincode);
+        // Check permissions for HAP-nodejs to access required storage for this device
+        var storagePath = path.normalize(process.cwd() + "/" + HAP.HAPStorage.storage().options.dir);
+        var fileAccessIssues = [];
+        fs.readdirSync(storagePath).filter((file) => file.includes(this.HomeKitAccessory.username.replace(/:/g, "").toUpperCase())).forEach((file) => {
+            try {
+                fs.accessSync(storagePath + "/" + file, fs.constants.R_OK | fs.constants.W_OK);
+            } catch (error) {
+               // Access permission error to file
+               fileAccessIssues.push(storagePath + "/" + file);
+            }
+        });
+
+        if (fileAccessIssues.length == 0) {
+            // Publish accessory on local network and push onto export array for HAP-NodeJS "accessory factory"
+            this.HomeKitAccessory.publish({username: this.HomeKitAccessory.username, pincode: this.HomeKitAccessory.pincode, category: this.HomeKitAccessory.category, advertiser: this.mDNSAdvertiser});
+            this.#outputLogging("Advertising '%s' as '%s' to local network. HomeKit pairing code is '%s'", this.deviceData.description, this.HomeKitAccessory.displayName, this.HomeKitAccessory.pincode);
+        }
+
+        if (fileAccessIssues.length != 0) {
+            // Detected file permission/access issues with HAP-NodeJS file storage, so we'll be unable to publish this accessory on the local network for HomeKit
+            this.#outputLogging("Permission/access issues to required storage used by HAP-NodeJS. This will prevent accessory from operating correctly in HomeKit until corrected");
+            fileAccessIssues.forEach((file) => {
+                this.#outputLogging("  += '%s'", file);
+            });
+        }
     }
 
     remove() {
         this.#outputLogging("Device '%s' has been removed", this.deviceData.description);
 
-        if (this.eventEmitter != null) {
+        if (this.eventEmitter != null && this.deviceData.hasOwnProperty("uuid") == true) {
             // Remove listener for "messages"
-            this.eventEmitter.removeAllListeners(this.deviceUUID);
+            this.eventEmitter.removeAllListeners(this.deviceData.uuid);
         }
 
         try {
@@ -165,12 +188,14 @@ class HomeKitDevice {
     }
 
     set(keyValues) {
-        if (typeof keyValues != "object" || this.eventEmitter == null) {
+        if (typeof keyValues != "object" || this.eventEmitter == null || 
+            this.deviceData.hasOwnProperty("uuid") == false || typeof this.deviceData.uuid != "string" || this.deviceData.uuid == "") {
+            
             return;
         }
         
         // Send event with data to set
-        this.eventEmitter.emit(HomeKitDevice.SET, this.deviceUUID, keyValues);
+        this.eventEmitter.emit(HomeKitDevice.SET, this.deviceData.uuid, keyValues);
     }
 
     get() {

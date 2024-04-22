@@ -4,7 +4,7 @@
 // Allows multiple HomeKit devices to connect to the single stream
 //
 // Mark Hulskamp
-// 5/3/2024
+// 22/4/2024
 
 "use strict";
 
@@ -666,7 +666,7 @@ class NexusStreamer {
             // This isn't a re-authorise request, so perform "Hello" packet
             this.#outputLogging("nexus", true, "Performing authentication to '%s'", this.host);
             helloBuffer.writeVarintField(1, ProtocolVersion.VERSION_3);
-            helloBuffer.writeStringField(2, this.camera.device_uuid.split(".")[1]); // UUID should be "quartz.xxxxxx". We want the xxxxxx part
+            helloBuffer.writeStringField(2, this.camera.uuid.split(".")[1]); // UUID should be "quartz.xxxxxx". We want the xxxxxx part
             helloBuffer.writeBooleanField(3, false);    // Doesnt required a connected camera
             helloBuffer.writeStringField(6, this.HomeKitAccessoryUUID); // UUID v4 device ID
             helloBuffer.writeStringField(7, "Nest/5.75.0 (iOScom.nestlabs.jasper.release) os=17.4.1");

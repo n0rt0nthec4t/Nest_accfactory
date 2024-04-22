@@ -14,7 +14,7 @@
 //
 // Supports both Nest REST and protobuf APIs for communication to Nest systems
 //
-// Code version 19/4/2024
+// Code version 22/4/2024
 // Mark Hulskamp
 
 "use strict";
@@ -52,8 +52,8 @@ const FFMPEGVERSION = 6.0;                                      // Minimum versi
 
 // Nest Thermostat(s)
 class NestThermostat extends HomeKitDevice {
-    constructor(currentDeviceData, globalEventEmitter) {
-        super(ACCESSORYNAME, currentDeviceData.HomeKitCode, config.mDNS, currentDeviceData.device_uuid, currentDeviceData, globalEventEmitter);
+    constructor(initialDeviceData, globalEventEmitter) {
+        super(ACCESSORYNAME, initialDeviceData.HomeKitCode, config.mDNS, initialDeviceData, globalEventEmitter);
 
         this.thermostatService = null;                  // HomeKit service for this thermostat
         this.batteryService = null;                     // Status of Nest Thermostat battery
@@ -598,8 +598,8 @@ class NestThermostat extends HomeKitDevice {
 
 // Nest Temperature Sensor(s)
 class NestTemperatureSensor extends HomeKitDevice {
-    constructor(currentDeviceData, globalEventEmitter) {
-        super(ACCESSORYNAME, currentDeviceData.HomeKitCode, config.mDNS, currentDeviceData.device_uuid, currentDeviceData, globalEventEmitter);
+    constructor(initialDeviceData, globalEventEmitter) {
+        super(ACCESSORYNAME, initialDeviceData.HomeKitCode, config.mDNS, initialDeviceData, globalEventEmitter);
 
         this.temperatureService = null;                 // HomeKit service for this temperature sensor
         this.batteryService = null;                     // HomeKit service for battery status
@@ -657,8 +657,8 @@ class NestTemperatureSensor extends HomeKitDevice {
 
 // Nest Protect(s)
 class NestProtect extends HomeKitDevice {
-    constructor(currentDeviceData, globalEventEmitter) {
-        super(ACCESSORYNAME, currentDeviceData.HomeKitCode, config.mDNS, currentDeviceData.device_uuid, currentDeviceData, globalEventEmitter);
+    constructor(initialDeviceData, globalEventEmitter) {
+        super(ACCESSORYNAME, initialDeviceData.HomeKitCode, config.mDNS, initialDeviceData, globalEventEmitter);
 
         this.smokeService = null;                       // HomeKit service for this smoke sensor
         this.carbonMonoxideService = null;              // HomeKit service for this carbon monoxide sensor
@@ -808,8 +808,8 @@ const MP4BOX = "mp4box";                                        // MP4 box frage
 const EXPECTEDVIDEORATE = 30;                                   // FPS we should expect doorbells/cameras to output at
 
 class NestCameraDoorbell extends HomeKitDevice {
-    constructor(currentDeviceData, globalEventEmitter) {
-        super(ACCESSORYNAME, currentDeviceData.HomeKitCode, config.mDNS, currentDeviceData.device_uuid, currentDeviceData, globalEventEmitter);
+    constructor(initialDeviceData, globalEventEmitter) {
+        super(ACCESSORYNAME, initialDeviceData.HomeKitCode, config.mDNS, initialDeviceData, globalEventEmitter);
 
         this.controller = null;                         // HomeKit Camera/Doorbell controller service
         this.motionServices = [];                       // Status of Nest Hello/Cam(s) motion sensor(s)
@@ -1177,7 +1177,7 @@ class NestCameraDoorbell extends HomeKitDevice {
 
                 // Add it to our queue to be pushed out through the generator function.
                 mp4boxes.push({ header: mp4segment.header, type: mp4segment.type, data: mp4segment.data });
-                this.eventEmitter.emit(this.deviceData.device_uuid + MP4BOX);
+                this.eventEmitter.emit(this.deviceData.uuid + MP4BOX);
 
                 // If there's anything left in the buffer, move us to the new box and let's keep iterating.
                 data = data.slice(mp4segment.size);
@@ -1223,7 +1223,7 @@ class NestCameraDoorbell extends HomeKitDevice {
 
             if (mp4boxes.length == 0) {
                 // since the ffmpeg recorder process hasn't notified us of any mp4 fragment boxes, wait until there are some
-                await EventEmitter.once(this.eventEmitter, this.deviceData.device_uuid + MP4BOX);
+                await EventEmitter.once(this.eventEmitter, this.deviceData.uuid + MP4BOX);
             }
 
             var mp4box = mp4boxes.shift();
@@ -1248,8 +1248,8 @@ class NestCameraDoorbell extends HomeKitDevice {
         this.HKSVRecorder.ffmpeg = null; // No more ffmpeg process
         this.HKSVRecorder.video = null; // No more video stream handle
         this.HKSVRecorder.audio = null; // No more audio stream handle
-        this.eventEmitter.emit(this.deviceData.device_uuid + MP4BOX);   // This will ensure we cleanly exit out from our segment generator
-        this.eventEmitter.removeAllListeners(this.deviceData.device_uuid + MP4BOX);  // Tidy up our event listeners
+        this.eventEmitter.emit(this.deviceData.uuid + MP4BOX);   // This will ensure we cleanly exit out from our segment generator
+        this.eventEmitter.removeAllListeners(this.deviceData.uuid + MP4BOX);  // Tidy up our event listeners
         if (config.debug.includes(Debugging.HKSV) == true) {
             // Log recording finished messages depending on reason
             if (closeReason == HAP.HDSProtocolSpecificErrorReason.NORMAL) {
@@ -1297,7 +1297,7 @@ class NestCameraDoorbell extends HomeKitDevice {
         if (this.deviceData.streaming_enabled == true && this.deviceData.online == true) {
             if (this.deviceData.HKSV == false && this.snapshotEvent.type != "" && this.snapshotEvent.done == false) {
                 // Grab event snapshot from camera/doorbell stream for a non-HKSV camera
-                await axios.get(this.deviceData.nexus_api_nest_domain_host + "/event_snapshot/" + this.deviceData.device_uuid.split(".")[1] + "/" + this.snapshotEvent.id + "?crop_type=timeline&width=" + snapshotRequestDetails.width + "&cachebuster=" + Math.floor(Date.now() / 1000), {responseType: "arraybuffer", headers: {"Referer": "https://" + nest.REFERER, "User-Agent": USERAGENT, "accept" : "*/*", [nest.cameraAPI.key] : nest.cameraAPI.value + nest.cameraAPI.token}, timeout: 3000})
+                await axios.get(this.deviceData.nexus_api_nest_domain_host + "/event_snapshot/" + this.deviceData.uuid.split(".")[1] + "/" + this.snapshotEvent.id + "?crop_type=timeline&width=" + snapshotRequestDetails.width + "&cachebuster=" + Math.floor(Date.now() / 1000), {responseType: "arraybuffer", headers: {"Referer": "https://" + nest.REFERER, "User-Agent": USERAGENT, "accept" : "*/*", [nest.cameraAPI.key] : nest.cameraAPI.value + nest.cameraAPI.token}, timeout: 3000})
                 .then((response) => {
                     if (typeof response.status != "number" || response.status != 200) {
                         throw new Error("Nest Camera API snapshot failed with error");
@@ -1311,7 +1311,7 @@ class NestCameraDoorbell extends HomeKitDevice {
             }
             if (this.deviceData.HKSV == true || imageBuffer.length == 0) {
                 // Camera/doorbell has HKSV OR the image buffer is empty still, so do direct grab from Nest API
-                await axios.get(this.deviceData.nexus_api_nest_domain_host + "/get_image?uuid=" + this.deviceData.device_uuid.split(".")[1] + "&width=" + snapshotRequestDetails.width, {responseType: "arraybuffer", headers: {"Referer": "https://" + nest.REFERER, "User-Agent": USERAGENT, "accept" : "*/*", [nest.cameraAPI.key] : nest.cameraAPI.value + nest.cameraAPI.token}, timeout: 3000})
+                await axios.get(this.deviceData.nexus_api_nest_domain_host + "/get_image?uuid=" + this.deviceData.uuid.split(".")[1] + "&width=" + snapshotRequestDetails.width, {responseType: "arraybuffer", headers: {"Referer": "https://" + nest.REFERER, "User-Agent": USERAGENT, "accept" : "*/*", [nest.cameraAPI.key] : nest.cameraAPI.value + nest.cameraAPI.token}, timeout: 3000})
                 .then((response) => {
                     if (typeof response.status != "number" || response.status != 200) {
                         throw new Error("Nest Camera API snapshot failed with error");
@@ -1743,8 +1743,8 @@ class NestCameraDoorbell extends HomeKitDevice {
 
 // Nest "virtual" weather station(s)
 class NestWeather extends HomeKitDevice {
-    constructor(currentDeviceData, globalEventEmitter) {
-        super(ACCESSORYNAME, currentDeviceData.HomeKitCode, config.mDNS, currentDeviceData.device_uuid, currentDeviceData, globalEventEmitter);
+    constructor(initialDeviceData, globalEventEmitter) {
+        super(ACCESSORYNAME, initialDeviceData.HomeKitCode, config.mDNS, initialDeviceData, globalEventEmitter);
 
         this.batteryService = null;
         this.airPressureService = null;
@@ -2041,7 +2041,7 @@ class NestSystem {
                 temp.serial_number = data.serial_number.toUpperCase();  // ensure serial numbers are in upper case
                 temp.excluded = (config.deviceOptions.Global.Exclude == true && typeof config.deviceOptions[temp.serial_number]?.Exclude == "undefined" || config.deviceOptions[temp.serial_number]?.Exclude == true);    // Mark device as excluded or not
                 temp.device_type = NestDeviceType.THERMOSTAT;  // Nest Thermostat
-                temp.device_uuid = object_key; // Internal structure ID
+                temp.uuid = object_key; // Internal structure ID
                 temp.manufacturer = ACCESSORYNAME;
                 temp.software_version = (data.hasOwnProperty("software_version") == true ? data.software_version.replace(/-/g, ".") : "0.0.0");
                 temp.model = "Thermostat";
@@ -2361,7 +2361,7 @@ class NestSystem {
                 temp.serial_number = data.serial_number.toUpperCase();  // ensure serial numbers are in upper case
                 temp.excluded = (config.deviceOptions.Global.Exclude == true && typeof config.deviceOptions[temp.serial_number]?.Exclude == "undefined" || config.deviceOptions[temp.serial_number]?.Exclude == true);    // Mark device as excluded or not
                 temp.device_type = NestDeviceType.TEMPSENSOR;  // Nest Temperature sensor
-                temp.device_uuid = object_key; // Internal structure ID
+                temp.uuid = object_key; // Internal structure ID
                 temp.manufacturer = ACCESSORYNAME;
                 temp.software_version = "1.0.0";
                 temp.model = "Temperature Sensor";
@@ -2429,7 +2429,7 @@ class NestSystem {
                 temp.serial_number = data.serial_number.toUpperCase();  // ensure serial numbers are in upper case
                 temp.excluded = (config.deviceOptions.Global.Exclude == true && typeof config.deviceOptions[temp.serial_number]?.Exclude == "undefined" || config.deviceOptions[temp.serial_number]?.Exclude == true);    // Mark device as excluded or not
                 temp.device_type = NestDeviceType.SMOKESENSOR;  // Nest Protect
-                temp.device_uuid = object_key; // Internal structure ID
+                temp.uuid = object_key; // Internal structure ID
                 temp.manufacturer = ACCESSORYNAME;
                 temp.software_version = (data.hasOwnProperty("software_version") == true ? data.software_version.replace(/-/g, ".") : "0.0.0");
                 temp.model = "Protect";
@@ -2538,7 +2538,7 @@ class NestSystem {
                 temp.serial_number = data.serial_number.toUpperCase();  // ensure serial numbers are in upper case
                 temp.excluded = (config.deviceOptions.Global.Exclude == true && typeof config.deviceOptions[temp.serial_number]?.Exclude == "undefined" || config.deviceOptions[temp.serial_number]?.Exclude == true);    // Mark device as excluded or not
                 temp.device_type = data.camera_type == 12 ? NestDeviceType.DOORBELL : NestDeviceType.CAMERA;  // Nest Camera or Doorbell
-                temp.device_uuid = object_key; // Internal structure ID
+                temp.uuid = object_key; // Internal structure ID
                 temp.manufacturer = ACCESSORYNAME;
                 temp.software_version = (data.hasOwnProperty("software_version") == true ? data.software_version.replace(/-/g, ".") : "0.0.0");
                 temp.model = data.model.replace(/nest\s*/ig, "");    // We'll use camera/doorbell model description that Nest supplies
@@ -2622,7 +2622,7 @@ class NestSystem {
                 temp.serial_number = tempMACAddress; // Serial number will be the mac address we've created
                 temp.excluded = (config.deviceOptions.Global.Exclude == true && config.deviceOptions[temp.serial_number]?.Exclude == undefined || config.deviceOptions[temp.serial_number]?.Exclude == true);    // Mark device as excluded or not
                 temp.device_type = NestDeviceType.WEATHER;
-                temp.device_uuid = object_key; // Internal structure ID
+                temp.uuid = object_key; // Internal structure ID
                 temp.manufacturer = ACCESSORYNAME;
                 temp.description = this.#validateHomeKitName(data.description);
                 temp.software_version = "1.0.0";
@@ -2660,7 +2660,7 @@ class NestSystem {
 
                 // Use the REST API structure ID from the protobuf structure. This should prevent two "weather" objects being created
                 var tempDevice = process_structure_data(value.value.structure_info.rtsStructureId, RESTTypeData);
-                tempDevice.device_uuid = object_key;    // Use the protobuf structure ID post processing
+                tempDevice.uuid = object_key;    // Use the protobuf structure ID post processing
             }
             if (value.object_source == "REST") {
                 var RESTTypeData = {};
@@ -2980,7 +2980,7 @@ class NestSystem {
         Object.entries(this.processData()).forEach(([serialNumber, deviceData]) => {
             // Process any device additions we have
             Object.entries(deviceChanges).filter(([index, object]) => object.change == "add").forEach(([index, object]) => {
-                if (object.object_key == deviceData.device_uuid && deviceData.excluded == false) {
+                if (object.object_key == deviceData.uuid && deviceData.excluded == false) {
                     // First up, send system message about the new device
                     this.eventEmitter.emit(SystemEvent.ADD, deviceData);
 
@@ -3030,7 +3030,7 @@ class NestSystem {
 
             if (deviceData.excluded == false) {
                 // Finally, if device is not excluded, send updated data to device for it to process
-                this.eventEmitter.emit(deviceData.device_uuid, HomeKitDevice.UPDATE, deviceData);
+                this.eventEmitter.emit(deviceData.uuid, HomeKitDevice.UPDATE, deviceData);
             }
         });
     }
