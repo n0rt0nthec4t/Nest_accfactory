@@ -83,8 +83,8 @@ or
 {
     "Connections" : {
         "Google" : {
-          "issuetoken" : "<google issue token url>",
-          "cookie" : "<google cookie>"
+            "issuetoken" : "<google issue token url>",
+            "cookie" : "<google cookie>"
         },
     },
     "HKSV" : true
@@ -117,9 +117,7 @@ The options available are within the configuration file are listed below. Some o
 
 | Option                     | Values                  | Description                                                                               | Global/Local |
 |----------------------------|-------------------------|-------------------------------------------------------------------------------------------|--------------|
-| GoogleToken                |                         | Google cookie token object {"issuetoken": "xxx", "cookie": "xxx" }                        | global       |
-| SessionToken               |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
-| FieldTest                  | true, false             | Enables the use of FieldTest accounts                                                     | global       |             
+| Connections                | Nest, Google            | Object list of connections to use as per examples above                                   | global       |             
 | EveApp                     | true, false             | Integration with Evehome App. Default is true                                             | global/local |
 | HomeKitCode                |                         | HomeKit pairing code in format of "xxx-xx-xxx". Default is 031-45-154                     | global/local |
 | Weather                    | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
