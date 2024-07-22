@@ -15,7 +15,7 @@
 //
 // HomeKitDevice.HOMEKITHISTORY - HomeKit History module
 //
-// Code version 5/5/2024
+// Code version 23/7/2024
 // Mark Hulskamp
 
 "use strict";
@@ -28,7 +28,7 @@ var util = require("util");
 var path = require("path");
 var fs = require("fs");
 
-
+// Define our HomeKit device class
 class HomeKitDevice {
     constructor(HomeKitAccessoryName, HomeKitPairingCode, HomeKitMDNSAdvertiser, initialDeviceData, eventEmitter) {
         this.eventEmitter = null;                               // Event emitter to use. Allow comms from other objects

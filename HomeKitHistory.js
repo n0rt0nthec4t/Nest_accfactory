@@ -534,7 +534,7 @@ class HomeKitHistory {
             
                 /*  var index = 80;
                 var uuid = "E863F1" + numberToEveHexString(index, 2) + "-079E-48FF-8F27-9C2605A29F52".toLocaleUpperCase();
-                eval(`HAP.Characteristic.EveTest`+ index + ` =function() {HAP.Characteristic.call(this, "Eve Test "+ index, uuid); this.setProps({format: HAP.Formats.DATA,perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]});this.value = this.getDefaultValue();}`);
+                eval(`HAP.Characteristic.EveTest`+ index + ` =function() {HAP.Characteristic.call(this, "Eve Test "+ index, uuid); this.setProps({format: HAP.Formats.DATA,perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]});this.value = this.getDefaultValue();}`);
                 util.inherits(eval(`HAP.Characteristic.EveTest`+ index), HAP.Characteristic);
                 eval(`HAP.Characteristic.EveTest`+ index + `.UUID = uuid`);
                 if (service.testCharacteristic(eval(`HAP.Characteristic.EveTest`+ index)) == false) {
@@ -1990,7 +1990,7 @@ class EveResetTotal extends HAP.Characteristic {
         super("Eve Reset Total", EveResetTotal.UUID, {
             format: HAP.Formats.UINT32,
             unit: HAP.Units.SECONDS, // since 2001/01/01
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY, HAP.Perms.WRITE]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY, HAP.Perms.PAIRED_WRITE]
         });
         this.value = this.getDefaultValue();
     }
@@ -2003,7 +2003,7 @@ class EveHistoryStatus extends HAP.Characteristic {
     constructor() {
         super("Eve History Status", EveHistoryStatus.UUID, {
             format: HAP.Formats.DATA,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
         });
         this.value = this.getDefaultValue();
     }
@@ -2016,7 +2016,7 @@ class EveHistoryEntries extends HAP.Characteristic {
     constructor() {
         super("Eve History Entries", EveHistoryEntries.UUID, {
             format: HAP.Formats.DATA,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
         });
         this.value = this.getDefaultValue();
     }
@@ -2029,7 +2029,7 @@ class EveHistoryRequest extends HAP.Characteristic {
     constructor() {
         super("Eve History Request", EveHistoryRequest.UUID, {
             format: HAP.Formats.DATA,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
         });
         this.value = this.getDefaultValue();
     }
@@ -2042,7 +2042,7 @@ class EveSetTime extends HAP.Characteristic {
     constructor() {
         super("Eve SetTime", EveSetTime.UUID, {
             format: HAP.Formats.DATA,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
         });
         this.value = this.getDefaultValue();
     }
@@ -2055,7 +2055,7 @@ class EveValvePosition extends HAP.Characteristic {
         super("Eve Valve Position", EveValvePosition.UUID, {
             format: HAP.Formats.UINT8,
             unit: HAP.Units.PERCENTAGE,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2068,7 +2068,7 @@ class EveLastActivation extends HAP.Characteristic {
         super("Eve Last Activation", EveLastActivation.UUID, {
             format: HAP.Formats.UINT32,
             unit: HAP.Units.SECONDS,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2080,7 +2080,7 @@ class EveTimesOpened extends HAP.Characteristic {
     constructor() {
         super("Eve Times Opened", EveTimesOpened.UUID, {
             format: HAP.Formats.UINT32,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2092,7 +2092,7 @@ class EveClosedDuration extends HAP.Characteristic {
     constructor() {
         super("Eve Closed Duration", EveClosedDuration.UUID, {
             format: HAP.Formats.UINT32,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2104,7 +2104,7 @@ class EveOpenDuration extends HAP.Characteristic {
     constructor() {
         super("Eve Opened Duration", EveOpenDuration.UUID, {
             format: HAP.Formats.UINT32,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2116,7 +2116,7 @@ class EveProgramCommand extends HAP.Characteristic {
     constructor() {
         super("Eve Program Command", EveProgramCommand.UUID, {
             format: HAP.Formats.DATA,
-            perms: [HAP.Perms.WRITE]
+            perms: [HAP.Perms.PAIRED_WRITE]
         });
         this.value = this.getDefaultValue();
     }
@@ -2128,7 +2128,7 @@ class EveProgramData extends HAP.Characteristic {
     constructor() {
         super("Eve Program Data", EveProgramData.UUID, {
             format: HAP.Formats.DATA,
-            perms: [HAP.Perms.WRITE]
+            perms: [HAP.Perms.PAIRED_WRITE]
         });
         this.value = this.getDefaultValue();
     }
@@ -2141,7 +2141,7 @@ class EveElectricalVoltage extends HAP.Characteristic {
         super("Eve Voltage", EveElectricalVoltage.UUID, {
             format: HAP.Formats.FLOAT,
             unit: "V",
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2154,7 +2154,7 @@ class EveElectricalCurrent extends HAP.Characteristic {
         super("Eve Current", EveElectricalCurrent.UUID, {
             format: HAP.Formats.FLOAT,
             unit: "A",
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2167,7 +2167,7 @@ class EveTotalConsumption extends HAP.Characteristic {
         super("Eve Total Consumption", EveTotalConsumption.UUID, {
             format: HAP.Formats.FLOAT,
             unit: 'kWh',
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2180,7 +2180,7 @@ class EveElectricalWattage extends HAP.Characteristic {
         super("Eve Watts", EveElectricalWattage.UUID, {
             format: HAP.Formats.FLOAT,
             unit: "W",
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2192,7 +2192,7 @@ class EveGetConfiguration extends HAP.Characteristic {
     constructor() {
         super("Eve Get Configuration", EveGetConfiguration.UUID, {
             format: HAP.Formats.DATA,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2204,7 +2204,7 @@ class EveSetConfiguration extends HAP.Characteristic {
     constructor() {
         super("Eve Set Configuration", EveSetConfiguration.UUID, {
             format: HAP.Formats.DATA,
-            perms: [HAP.Perms.WRITE, HAP.Perms.HIDDEN]
+            perms: [HAP.Perms.PAIRED_WRITE, HAP.Perms.HIDDEN]
         });
         this.value = this.getDefaultValue();
     }
@@ -2216,7 +2216,7 @@ class EveFirmware extends HAP.Characteristic {
     constructor() {
         super("Eve Firmware", EveFirmware.UUID, {
             format: HAP.Formats.DATA,
-            perms: [HAP.Perms.READ, HAP.Perms.WRITE, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.PAIRED_WRITE, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2225,10 +2225,13 @@ HAP.Characteristic.EveFirmware = EveFirmware;
 
 class EveSensitivity extends HAP.Characteristic {
     static UUID = "E863F120-079E-48FF-8F27-9C2605A29F52";
+    static HIGH = 0;
+    static MEDIUM = 4;
+    static LOW = 7;
     constructor() {
         super("Eve Motion Sensitivity", EveSensitivity.UUID, {
             format: HAP.Formats.UINT8,
-            perms: [HAP.Perms.READ, HAP.Perms.WRITE, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.PAIRED_WRITE, HAP.Perms.NOTIFY],
             minValue: 0,
             maxValue: 7,
             validValues: [0, 4, 7]
@@ -2237,16 +2240,13 @@ class EveSensitivity extends HAP.Characteristic {
     }
 }
 HAP.Characteristic.EveSensitivity = EveSensitivity;
-HAP.Characteristic.EveSensitivity.HIGH = 0;
-HAP.Characteristic.EveSensitivity.MEDIUM = 4;
-HAP.Characteristic.EveSensitivity.LOW = 7;
 
 class EveDuration extends HAP.Characteristic {
     static UUID = "E863F12D-079E-48FF-8F27-9C2605A29F52";
     constructor() {
         super("Eve Motion Duration", EveDuration.UUID, {
             format: HAP.Formats.UINT16,
-            perms: [HAP.Perms.READ, HAP.Perms.WRITE, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.PAIRED_WRITE, HAP.Perms.NOTIFY],
             minValue: 5,
             maxValue: 54000,
             validValues: [5, 10, 20, 30, 60, 120, 300, 600, 1200, 1800, 3600, 7200, 10800, 18000, 36000, 43200, 54000]
@@ -2258,32 +2258,32 @@ HAP.Characteristic.EveDuration = EveDuration;
 
 class EveDeviceStatus extends HAP.Characteristic {
     static UUID = "E863F134-079E-48FF-8F27-9C2605A29F52";
+    static SMOKE_DETECTED = (1 << 0);
+    static HEAT_DETECTED = (1 << 1);
+    static ALARM_TEST_ACTIVE = (1 << 2);
+    static SMOKE_SENSOR_ERROR = (1 << 5);
+    static HEAT_SENSOR_ERROR = (1 << 7);
+    static SMOKE_CHAMBER_ERROR = (1 << 9);
+    static SMOKE_SENSOR_DEACTIVATED = (1 << 14);
+    static FLASH_STATUS_LED = (1 << 15);
+    static ALARM_PAUSED = (1 << 24);
+    static ALARM_MUTED = (1 << 25);
     constructor() {
         super("Eve Device Status", EveDeviceStatus.UUID, {
             format: HAP.Formats.UINT32,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
 }
 HAP.Characteristic.EveDeviceStatus = EveDeviceStatus;
-HAP.Characteristic.EveDeviceStatus.SMOKE_DETECTED = (1 << 0);
-HAP.Characteristic.EveDeviceStatus.HEAT_DETECTED = (1 << 1);
-HAP.Characteristic.EveDeviceStatus.ALARM_TEST_ACTIVE = (1 << 2);
-HAP.Characteristic.EveDeviceStatus.SMOKE_SENSOR_ERROR = (1 << 5);
-HAP.Characteristic.EveDeviceStatus.HEAT_SENSOR_ERROR = (1 << 7);
-HAP.Characteristic.EveDeviceStatus.SMOKE_CHAMBER_ERROR = (1 << 9);
-HAP.Characteristic.EveDeviceStatus.SMOKE_SENSOR_DEACTIVATED = (1 << 14);
-HAP.Characteristic.EveDeviceStatus.FLASH_STATUS_LED = (1 << 15);
-HAP.Characteristic.EveDeviceStatus.ALARM_PAUSED = (1 << 24);
-HAP.Characteristic.EveDeviceStatus.ALARM_MUTED = (1 << 25);
 
 class EveAirPressure extends HAP.Characteristic {
     static UUID = "E863F10F-079E-48FF-8F27-9C2605A29F52";
     constructor() {
         super("Eve Air Pressure", EveAirPressure.UUID, {
             format: HAP.Formats.UINT16,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: "hPa",
             minValue: 700,
             maxValue: 1100
@@ -2298,12 +2298,11 @@ class EveElevation extends HAP.Characteristic {
     constructor() {
         super("Eve Elevation", EveElevation.UUID, {
             format: HAP.Formats.INT,
-            perms: [HAP.Perms.READ, HAP.Perms.WRITE, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.PAIRED_WRITE, HAP.Perms.NOTIFY],
             unit: "m",
             minValue: -430,
             maxValue: 8850,
             minStep: 10,
-            maxValue: 1100
         });
         this.value = this.getDefaultValue();
     }
@@ -2315,7 +2314,7 @@ class EveVOCLevel extends HAP.Characteristic {
     constructor() {
         super("VOC Level", EveVOCLevel.UUID, {
             format: HAP.Formats.UINT16,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: "ppm",
             minValue: 5,
             maxValue: 5000,
@@ -2328,10 +2327,15 @@ HAP.Characteristic.EveVOCLevel = EveVOCLevel;
 
 class EveWeatherTrend extends HAP.Characteristic {
     static UUID = "E863F136-079E-48FF-8F27-9C2605A29F52";
+    static BLANK = 0; // also: 2, 8, 10
+    static SUN = 1; // also: 9
+    static CLOUDS_SUN = 3; // also: 11
+    static RAIN = 4; // also: 5, 6, 7
+    static RAIN_WIND = 12; // also: 13, 14, 15
     constructor() {
         super("Eve Weather Trend", EveWeatherTrend.UUID, {
             format: HAP.Formats.UINT8,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             minValue: 0,
             maxValue: 15,
             minStep: 1,
@@ -2340,11 +2344,6 @@ class EveWeatherTrend extends HAP.Characteristic {
     }
 }
 HAP.Characteristic.EveWeatherTrend = EveWeatherTrend;
-HAP.Characteristic.EveWeatherTrend.BLANK = 0; // also: 2, 8, 10
-HAP.Characteristic.EveWeatherTrend.SUN = 1; // also: 9
-HAP.Characteristic.EveWeatherTrend.CLOUDS_SUN = 3; // also: 11
-HAP.Characteristic.EveWeatherTrend.RAIN = 4; // also: 5, 6, 7
-HAP.Characteristic.EveWeatherTrend.RAIN_WIND = 12; // also: 13, 14, 15
 
 // EveHomeHistory Service
 class EveHomeHistory extends HAP.Service {
@@ -2381,7 +2380,7 @@ class ApparentTemperature extends HAP.Characteristic {
     constructor() {
         super("Apparent Temperature", ApparentTemperature.UUID, {
             format: HAP.Formats.FLOAT,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: HAP.Units.CELSIUS,
             minValue: -40,
             maxValue: 100,
@@ -2397,7 +2396,7 @@ class CloudCover extends HAP.Characteristic {
     constructor() {
         super("Cloud Cover", CloudCover.UUID, {
             format: HAP.Formats.UINT8,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: HAP.Units.PERCENTAGE,
             minValue: 0,
             maxValue: 100
@@ -2412,7 +2411,7 @@ class Condition extends HAP.Characteristic {
     constructor() {
         super("Condition", Condition.UUID, {
             format: HAP.Formats.STRING,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2424,7 +2423,7 @@ class ConditionCategory extends HAP.Characteristic {
     constructor() {
         super("Condition Category", ConditionCategory.UUID, {
             format: HAP.Formats.UINT8,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             minValue: 0,
             maxValue: 9
         });
@@ -2438,7 +2437,7 @@ class DewPoint extends HAP.Characteristic {
     constructor() {
         super("Dew Point", DewPoint.UUID, {
             format: HAP.Formats.FLOAT,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: HAP.Units.CELSIUS,
             minValue: -40,
             maxValue: 100,
@@ -2454,7 +2453,7 @@ class ForecastDay extends HAP.Characteristic {
     constructor() {
         super("Day", ForecastDay.UUID, {
             format: HAP.Formats.STRING,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2466,7 +2465,7 @@ class MaximumWindSpeed extends HAP.Characteristic {
     constructor() {
         super("Maximum Wind Speed", MaximumWindSpeed.UUID, {
             format: HAP.Formats.FLOAT,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: "km/h",
             minValue: 0,
             maxValue: 150,
@@ -2482,7 +2481,7 @@ class MinimumTemperature extends HAP.Characteristic {
     constructor() {
         super("Maximum Wind Speed", MinimumTemperature.UUID, {
             format: HAP.Formats.FLOAT,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: HAP.Units.CELSIUS,
             minValue: -40,
             maxValue: 100,
@@ -2498,7 +2497,7 @@ class ObservationStation extends HAP.Characteristic {
     constructor() {
         super("Observation Station", ObservationStation.UUID, {
             format: HAP.Formats.STRING,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2510,7 +2509,7 @@ class ObservationTime extends HAP.Characteristic {
     constructor() {
         super("Observation Time", ObservationTime.UUID, {
             format: HAP.Formats.STRING,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2522,7 +2521,7 @@ class Ozone extends HAP.Characteristic {
     constructor() {
         super("Ozone", Ozone.UUID, {
             format: HAP.Formats.UINT8,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: "DU",
             minValue: 0,
             maxValue: 500
@@ -2537,7 +2536,7 @@ class Rain extends HAP.Characteristic {
     constructor() {
         super("Rain", Rain.UUID, {
             format: HAP.Formats.BOOL,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2549,7 +2548,7 @@ class RainLastHour extends HAP.Characteristic {
     constructor() {
         super("Rain Last Hour", RainLastHour.UUID, {
             format: HAP.Formats.UINT16,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: "mm",
             minValue: 0,
             maxValue: 200
@@ -2564,7 +2563,7 @@ class RainProbability extends HAP.Characteristic {
     constructor() {
         super("Rain Probability", RainProbability.UUID, {
             format: HAP.Formats.UINT8,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: HAP.Units.PERCENTAGE,
             minValue: 0,
             maxValue: 100
@@ -2579,7 +2578,7 @@ class TotalRain extends HAP.Characteristic {
     constructor() {
         super("Total Rain", TotalRain.UUID, {
             format: HAP.Formats.UINT16,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: "mm",
             minValue: 0,
             maxValue: 2000
@@ -2594,7 +2593,7 @@ class Snow extends HAP.Characteristic {
     constructor() {
         super("Snow", Snow.UUID, {
             format: HAP.Formats.BOOL,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2606,7 +2605,7 @@ class SolarRadiation extends HAP.Characteristic {
     constructor() {
         super("Solar Radiation", SolarRadiation.UUID, {
             format: HAP.Formats.UINT16,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: "W/m²",
             minValue: 0,
             maxValue: 2000
@@ -2621,7 +2620,7 @@ class SunriseTime extends HAP.Characteristic {
     constructor() {
         super("Sunrise", SunriseTime.UUID, {
             format: HAP.Formats.STRING,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2633,7 +2632,7 @@ class SunsetTime extends HAP.Characteristic {
     constructor() {
         super("Sunset", SunsetTime.UUID, {
             format: HAP.Formats.STRING,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2645,7 +2644,7 @@ class UVIndex extends HAP.Characteristic {
     constructor() {
         super("UV Index", UVIndex.UUID, {
             format: HAP.Formats.UINT8,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             minValue: 0,
             maxValue: 16
         });
@@ -2659,7 +2658,7 @@ class Visibility extends HAP.Characteristic {
     constructor() {
         super("Visibility", Visibility.UUID, {
             format: HAP.Formats.UINT8,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: "km",
             minValue: 0,
             maxValue: 100
@@ -2674,7 +2673,7 @@ class WindDirection extends HAP.Characteristic {
     constructor() {
         super("Wind Direction", WindDirection.UUID, {
             format: HAP.Formats.STRING,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY]
         });
         this.value = this.getDefaultValue();
     }
@@ -2686,7 +2685,7 @@ class WindSpeed extends HAP.Characteristic {
     constructor() {
         super("Wind Speed", WindSpeed.UUID, {
             format: HAP.Formats.FLOAT,
-            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            perms: [HAP.Perms.PAIRED_READ, HAP.Perms.NOTIFY],
             unit: "km/h",
             minValue: 0,
             maxValue: 150,
