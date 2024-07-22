@@ -68,7 +68,11 @@ Nest_config.json is the configuration file where various options can be. An exam
 
 ```
 {
-    "SessionToken" : "<nest session token>",
+    "Connections" : {
+        "Nest" : {
+            "access_token" : "<nest session token>"
+        },
+    },
     "HKSV" : true
 }
 ```
@@ -77,9 +81,11 @@ or
 
 ```
 {
-    "GoogleToken" : {
-        "issuetoken" : "<google issue token url>",
-        "cookie" : "<google cookie>"
+    "Connections" : {
+        "Google" : {
+          "issuetoken" : "<google issue token url>",
+          "cookie" : "<google cookie>"
+        },
     },
     "HKSV" : true
 }
@@ -89,7 +95,11 @@ An advanced configuration example is below
 
 ```
 {
-    "SessionToken" : "<nest session token>",
+    "Connections" : {
+        "Nest" : {
+            "access_token" : "<nest session token>"
+        },
+    },
     "HKSV" : false,
     "SERIAL1" : {
         "Exclude" : true
