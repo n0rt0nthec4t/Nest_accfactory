@@ -82,7 +82,7 @@ message LegacyStructureSelfTestTrait {
     google.protobuf.Timestamp lastAstEndUtcSecs = 8;
     google.protobuf.Timestamp astRequestUtcSecs = 9;
     google.protobuf.Timestamp astSkipUtcSecs = 10;
-    repeated string astParticipants = 11;
+    repeated uint64 astParticipants = 11;
 
     enum SelfTestType {
         SELF_TEST_TYPE_UNSPECIFIED = 0;

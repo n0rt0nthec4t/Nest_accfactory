@@ -5,7 +5,7 @@ import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "../../google/rpc/status.proto";
 import "../../nest/messages.proto";
-//import "wdl-event-importance.proto";
+import "../../wdl-event-importance.proto";
 
 package nestlabs.gateway.v1;
 
@@ -249,6 +249,11 @@ message ResourceCommand {
 message ResourceCommandResponse {
     ResourceRequest resourceRequest = 1;
     repeated TraitOperation traitOperations = 2;
+}
+
+message ResourceCommandResponseFromAPI {
+    repeated ResourceCommandResponse resourceCommandResponse = 1;
+    string unknown = 2;
 }
 
 message BatchTraitUpdateStateRequest {

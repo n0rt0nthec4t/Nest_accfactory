@@ -1,11 +1,11 @@
 {
   "name": "nest_accfactory",
-  "description": "HomeKit integration for Nest devices based on HAP-NodeJS library",
-  "version": "x.x.x",
+  "description": "HomeKit integration for Nest devices using HAP-NodeJS library",
+  "version": "0.1.6",
   "main": "Nest_accfactory.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/n0rt0nthec4t/HAP-NodeJS-Accessories"
+    "url": "https://github.com/n0rt0nthec4t/Nest_accfactory"
   },
   "keywords": [
     "homekit",
@@ -19,28 +19,27 @@
     "smoke",
     "sensor"
   ],
-  "author": "Mark Hulskamp",
+  "author": "Mark Hulskamp <mark@n0rt0nthec4t.dev>",
   "funding": [
     {
       "type": "paypal",
       "url": "https://www.paypal.com/donate/?cmd=_donations&business=YF53YVW333VVY&item_name=HAP-NodeJS-Accessories&currency_code=AUD&source=url"
     }
   ],
-  "license": "ISC",
+  "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/n0rt0nthec4t/HAP-NodeJS-Accessories/issues"
+    "url": "https://github.com/n0rt0nthec4t/Nest_accfactory/discussions"
   },
-  "homepage": "https://github.com/n0rt0nthec4t/HAP-NodeJS-Accessories",
+  "homepage": "https://github.com/n0rt0nthec4t/Nest_accfactory",
   "engines": {
-    "node": ">=17.0.0",
-    "hap-nodejs": ">=0.11.1"
+    "node": ">=18.0.0",
+    "hap-nodejs": ">=1.0.0"
   },
   "dependencies": {
-    "hap-nodejs": ">=0.11.1",
+    "hap-nodejs": ">=1.0.0",
     "axios": ">=1.6.7",
-    "pbf": ">=3.2.1",
-    "ws": ">=8.16.0",
-    "protobufjs": ">=7.2.6",
-    "ip": ">=2.0.1"
+    "pbf": "^3.3.0",
+    "ws": ">=8.17.1",
+    "protobufjs": ">=7.2.6"
   }
 }

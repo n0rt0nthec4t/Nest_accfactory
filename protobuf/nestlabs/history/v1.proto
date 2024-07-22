@@ -2,7 +2,7 @@ syntax = "proto3";
 
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
-import "nestlabs/eventingapi/v1.proto";
+import "../../nestlabs/eventingapi/v1.proto";
 
 package nestlabs.history.v1;
 

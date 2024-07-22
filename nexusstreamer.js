@@ -4,7 +4,7 @@
 // Allows multiple HomeKit devices to connect to the single stream
 //
 // Mark Hulskamp
-// 22/4/2024
+// 5/5/2024
 
 "use strict";
 
@@ -15,8 +15,7 @@ var protoBuf = require("pbf");  // Proto buffer
 var util = require("util");
 var fs = require("fs");
 var tls = require("tls");
-var EventEmitter = require("events");
-var child_process = require("child_process");
+var crypto = require("crypto");
 
 // Define constants
 const DEFAULTBUFFERTIME = 15000;                                // Default time in milliseconds to hold in buffer
@@ -122,6 +121,8 @@ const H264NALUnitType = {
 
 const H264NALStartcode = Buffer.from([0x00, 0x00, 0x00, 0x01]);
 
+const AACAudioSilence = Buffer.from([0x21, 0x10, 0x01, 0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+
 // Blank audio in AAC format, mono channel @48000
 const AACMONO48000BLANK = Buffer.from([
     0xFF, 0xF1, 0x4C, 0x40, 0x03, 0x9F, 0xFC, 0xDE, 0x02, 0x00, 0x4C, 0x61,
@@ -175,7 +176,7 @@ const AACMONO48000BLANK = Buffer.from([
 
 // NeuxsStreamer object
 class NexusStreamer {
-	constructor(HomeKitAccessoryUUID, cameraToken, tokenType, deviceData, enableDebugging) {
+	constructor(cameraToken, tokenType, deviceData, enableDebugging) {
         this.camera = deviceData; // Current camera data
 
         this.buffer = {active: false, size: 0, image: [], buffer: [], streams: []};    // Buffer and stream details
@@ -192,8 +193,8 @@ class NexusStreamer {
 
         this.timer = null;  // Internal timer handle
         this.pingtimer = null;  // Ping timer handle
+        this.watchdogTimer = null; // "Watchdog" timer handle for no packets in a period
         this.sessionID = null;  // no session ID yet.. We'll assign a random one when we connect to the nexus stream
-        this.HomeKitAccessoryUUID = HomeKitAccessoryUUID;   // HomeKit accessory UUID
 
         // Get access token and set token type
         this.cameraToken = cameraToken;
@@ -334,12 +335,14 @@ class NexusStreamer {
 
             talkbackStream.on("data", (data) => {
                 // Received audio data to send onto nexus for output to doorbell/camera
+                this.talking = true;
                 this.#AudioPayload(data);
 
                 clearTimeout(this.buffer.streams[index].audioTimeout);   // Clear return audio timeout
                 this.buffer.streams[index].audioTimeout = setTimeout(() => {
                     // no audio received in 500ms, so mark end of stream
-                    this.#AudioPayload(Buffer.from([]));
+                    this.talking = false;
+                    this.#AudioPayload(Buffer.alloc(0));
                 }, 500);
             });
         }
@@ -457,12 +460,6 @@ class NexusStreamer {
                 this.#outputLogging("nexus", true, "Connection established to '%s'", host);
                 this.tcpSocket.setKeepAlive(true); // Keep socket connection alive
                 this.#Authenticate(false);
-
-                this.pingtimer = setInterval(() => {
-                    // Periodically send PING message to keep stream alive
-                    // Doesnt seem to work???
-                    this.#sendMessage(PacketType.PING, Buffer.alloc(0));
-                }, PINGINTERVAL);
             });
 
             this.tcpSocket.on("error", (error) => {
@@ -482,8 +479,10 @@ class NexusStreamer {
             this.tcpSocket.on("close", (hadError) => {
                 var normalClose = this.weDidClose;  // Cache this, so can reset it below before we take action
 
+                clearTimeout(this.watchdogTimer);   // Clear watchdog timer
                 clearInterval(this.pingtimer);    // Clear ping timer
                 this.playingBack = false;   // Playback ended as socket is closed
+                this.talking = false;   // Can't be talking if socket closed
                 this.authorised = false;    // Since connection close, we can't be authorised anymore
                 this.tcpSocket = null; // Clear socket object 
                 this.sessionID = null;  // Not an active session anymore
@@ -549,13 +548,10 @@ class NexusStreamer {
 
         // Attempt to use camera's streaming profile or use default
         var otherProfiles = [];
-        this.camera.capabilities.forEach((element) => {
-            if (element.startsWith("streaming.cameraprofile")) {
-                var profile = element.replace("streaming.cameraprofile.", "");
-                if (otherProfiles.indexOf(profile, 0) == -1 && StreamProfile.VIDEO_H264_2MBIT_L40 != StreamProfile[profile]) {
-                    // Profile isn't the primary profile, and isn't in the others list, so add it
-                    otherProfiles.push(StreamProfile[profile]);
-                }
+        this.camera.streaming_profiles.forEach((profile) => {
+            if (otherProfiles.indexOf(profile, 0) == -1 && StreamProfile.VIDEO_H264_2MBIT_L40 != StreamProfile[profile]) {
+                // Profile isn't the primary profile, and isn't in the others list, so add it
+                otherProfiles.push(StreamProfile[profile]);
             }
         });
 
@@ -609,20 +605,9 @@ class NexusStreamer {
         }
     }
 
-    #processMessages() {
-        // Send any pending messages that might have accumulated while socket pending etc
-        if (typeof this.pendingMessages != "object" || this.pendingMessages.length == 0) {
-            return;
-        }
-
-        for (let pendingMessage = this.pendingMessages.shift(); pendingMessage; pendingMessage = this.pendingMessages.shift()) {
-            this.#sendMessage(pendingMessage.messageType, pendingMessage.messageData);
-        }
-    }
-
     #sendMessage(messageType, messageData) {
         if (this.tcpSocket == null || this.tcpSocket.readyState != "open" || (messageType !== PacketType.HELLO && this.authorised == false)) { 
-            this.pendingMessages.push({messageType, messageData});
+            this.pendingMessages.push({"type": messageType, "data": messageData});
             return;
         }
 
@@ -668,8 +653,8 @@ class NexusStreamer {
             helloBuffer.writeVarintField(1, ProtocolVersion.VERSION_3);
             helloBuffer.writeStringField(2, this.camera.uuid.split(".")[1]); // UUID should be "quartz.xxxxxx". We want the xxxxxx part
             helloBuffer.writeBooleanField(3, false);    // Doesnt required a connected camera
-            helloBuffer.writeStringField(6, this.HomeKitAccessoryUUID); // UUID v4 device ID
-            helloBuffer.writeStringField(7, "Nest/5.75.0 (iOScom.nestlabs.jasper.release) os=17.4.1");
+            helloBuffer.writeStringField(6, crypto.randomUUID()); // Random UUID for this connection attempt
+            helloBuffer.writeStringField(7, "Nest/5.75.0 (iOScom.nestlabs.jasper.release) os=17.5.1");
             helloBuffer.writeVarintField(9, ClientType.IOS);
             //helloBuffer.writeStringField(7, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6 Safari/605.1.15");
             //helloBuffer.writeVarintField(9, ClientType.WEB);
@@ -742,7 +727,7 @@ class NexusStreamer {
             if (stream.codec_type == CodecType.H264) {
                 this.nexusvideo = {channel_id: stream.channel_id, start_time: (stream.start_time * 1000), sample_rate: stream.sample_rate, packet_time: (stream.start_time * 1000)};
             }
-            if (stream.codec_type == CodecType.AAC) {
+            if (stream.codec_type == CodecType.AAC || stream.codec_type == CodecType.OPUS || stream.codec_type == CodecType.SPEEX) {
                 this.nexusaudio = {channel_id: stream.channel_id, start_time: (stream.start_time * 1000), sample_rate: stream.sample_rate, packet_time: (stream.start_time * 1000)};
             }
         });
@@ -772,15 +757,29 @@ class NexusStreamer {
             }, { id: 0, left: 0, right: 0, top: 0, bottom: 0 }, protoBuf.readVarint() + protoBuf.pos));
         }, {session_id: 0, channel_id: 0, timestamp_delta: 0, payload: null, latency_rtp_sequence: 0, latency_rtp_ssrc: 0, directors_cut_regions: []});
 
+        // Setup up a timeout to monitor for no packets recieved in a certain period
+        // If its trigger, we'll attempt to restart the stream and/or connection
+        // <-- testing to see how often this occurs first
+        clearTimeout(this.watchdogTimer);
+        this.watchdogTimer = setTimeout(() => {
+            this.#outputLogging("nexus", true, "No data receieved in the past '%s' seconds. Attempting restart", 8);
+
+            // Setup listener for socket close event. Once socket is closed, we'll perform the re-connection
+            this.tcpSocket && this.tcpSocket.on("close", (hasError) => {
+                this.#connect(this.camera.direct_nexustalk_host);    // try reconnection
+            });
+            this.#close(false);     // Close existing socket  
+        }, 8000);
+
         // Handle video packet
         if (packet.channel_id === this.nexusvideo.channel_id) {
-            this.nexusvideo.packet_time = (this.nexusvideo.start_time + (Date.now() - this.nexusvideo.start_time));
+            this.nexusvideo.packet_time += packet.timestamp_delta;
             this.#ffmpegRouter("video", Buffer.from(packet.payload), this.nexusvideo.packet_time);
         }
 
         // Handle audio packet
         if (packet.channel_id === this.nexusaudio.channel_id) {
-            this.nexusaudio.packet_time = (this.nexusaudio.start_time + (Date.now() - this.nexusaudio.start_time));
+            this.nexusaudio.packet_time += packet.timestamp_delta;
             this.#ffmpegRouter("audio", Buffer.from(packet.payload), this.nexusaudio.packet_time);
         }
     }
@@ -837,7 +836,6 @@ class NexusStreamer {
         }, {user_id: "", session_id: 0, quick_action_id: 0, device_id: ""});
 
         this.#outputLogging("nexus", true, "Talkback started on '%s'", packet.device_id);
-        this.talking = true;    // Talk back has started
     }
 
     #handleTalkbackEnd(payload) {
@@ -850,7 +848,6 @@ class NexusStreamer {
         }, {user_id: "", session_id: 0, quick_action_id: 0, device_id: ""});
 
         this.#outputLogging("nexus", true, "Talkback ended on '%s'", packet.device_id);
-        this.talking = false;    // Talk back has stopped
     }
 
     #handleNexusData(data) {
@@ -879,7 +876,17 @@ class NexusStreamer {
         var protoBufPayload = new protoBuf(this.pendingBuffer.slice(headerSizeInBytes, protoBufPayloadSize));
         if (packetType == PacketType.OK) {
             this.authorised = true; // OK message, means we're connected and authorised to Nexus
-            this.#processMessages();    // process any pending messages
+
+            // process any pending messages we have stored
+            for (let pendingMessage = this.pendingMessages.shift(); pendingMessage; pendingMessage = this.pendingMessages.shift()) {
+                this.#sendMessage(pendingMessage.type, pendingMessage.data);
+            }
+
+            // Periodically send PING message to keep stream alive
+            this.pingtimer = setInterval(() => {
+                this.#sendMessage(PacketType.PING, Buffer.alloc(0));
+            }, PINGINTERVAL);
+
             this.#startNexusData();   // start processing data
         }
     

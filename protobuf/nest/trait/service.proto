@@ -6,11 +6,11 @@ import "../../weave/common.proto";
 package nest.trait.service;
 
 message DeviceInfoTrait {
-    string weaveNodeId = 1;
+    uint64 weaveNodeId = 1;
     string typeName = 2;
     string className = 3;
     weave.common.ResourceId pairerId = 4;
-    string fabricId = 5;
+    uint64 fabricId = 5;
     string serviceGroupId = 6;
     DeviceState deviceState = 7;
     google.protobuf.Timestamp pairedAt = 8;

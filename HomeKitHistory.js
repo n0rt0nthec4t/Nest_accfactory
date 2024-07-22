@@ -27,7 +27,7 @@
 // -- inital support for Eve Water Guard
 // -- fixed handling of negative values in history when being encoded for sending to EveHome
 //
-// Version 5/3/2024
+// Version 22/7/2024
 // Mark Hulskamp
 
 // Define HAP-NodeJS requirements
@@ -481,14 +481,12 @@ class HomeKitHistory {
                 service.updateCharacteristic(HAP.Characteristic.EveLastActivation, this.#EveLastEventTime()); // time of last event in seconds since first event
                 
                 service.getCharacteristic(HAP.Characteristic.EveTimesOpened).on("get", (callback) => {
-                    callback(null, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1}));  // Count of entries based upon status = 1, opened
+                    callback(undefined, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1}));  // Count of entries based upon status = 1, opened
                 });
                 
                 service.getCharacteristic(HAP.Characteristic.EveLastActivation).on("get", (callback) => {
-                    callback(null, this.#EveLastEventTime());  // time of last event in seconds since first event
+                    callback(undefined, this.#EveLastEventTime());  // time of last event in seconds since first event
                 });
-
-                this.debug && this.#outputLogging("History", false, "History linked to EveHome app as '%s' to '%s'", "Eve Door & Window", accessoryDescription);
                 break;
             }
 
@@ -509,14 +507,12 @@ class HomeKitHistory {
                 service.updateCharacteristic(HAP.Characteristic.EveLastActivation, this.#EveLastEventTime()); // time of last event in seconds since first event
                 
                 service.getCharacteristic(HAP.Characteristic.EveTimesOpened).on("get", (callback) => {
-                    callback(null, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1})); // Count of entries based upon status = 1, opened
+                    callback(undefined, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1})); // Count of entries based upon status = 1, opened
                 });
                 
                 service.getCharacteristic(HAP.Characteristic.EveLastActivation).on("get", (callback) => {
-                    callback(null, this.#EveLastEventTime());  // time of last event in seconds since first event
+                    callback(undefined, this.#EveLastEventTime());  // time of last event in seconds since first event
                 });
-
-                this.debug && this.#outputLogging("History", false, "History linked to EveHome app for '%s'", accessoryDescription);
                 break;
             }
 
@@ -538,7 +534,7 @@ class HomeKitHistory {
             
                 /*  var index = 80;
                 var uuid = "E863F1" + numberToEveHexString(index, 2) + "-079E-48FF-8F27-9C2605A29F52".toLocaleUpperCase();
-                eval(`HAP.Characteristic.EveTest`+ index + ` =function() {HAP.Characteristic.call(this, "Eve Test "+ index, uuid); this.setProps({format: HAP.Characteristic.Formats.DATA,perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]});this.value = this.getDefaultValue();}`);
+                eval(`HAP.Characteristic.EveTest`+ index + ` =function() {HAP.Characteristic.call(this, "Eve Test "+ index, uuid); this.setProps({format: HAP.Formats.DATA,perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]});this.value = this.getDefaultValue();}`);
                 util.inherits(eval(`HAP.Characteristic.EveTest`+ index), HAP.Characteristic);
                 eval(`HAP.Characteristic.EveTest`+ index + `.UUID = uuid`);
                 if (service.testCharacteristic(eval(`HAP.Characteristic.EveTest`+ index)) == false) {
@@ -553,7 +549,7 @@ class HomeKitHistory {
                         numberToEveHexString(2979, 4),  // firmware version (build xxxx)
                         numberToEveHexString(Math.floor(Date.now() / 1000), 8)); // "now" time
     
-                        callback(null, encodeEveData(value));
+                        callback(undefined, encodeEveData(value));
                 });
 
                 service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
@@ -619,8 +615,6 @@ class HomeKitHistory {
                     }
                     callback();
                 });
-
-                this.debug && this.#outputLogging("History", false, "History linked to EveHome app for '%s'", accessoryDescription);
                 break;
             }
 
@@ -658,12 +652,11 @@ class HomeKitHistory {
                 
                 service.updateCharacteristic(HAP.Characteristic.EveProgramData, this.#EveThermoGetDetails(optionalParams.getcommand));
                 service.getCharacteristic(HAP.Characteristic.EveProgramData).on("get", (callback) => {
-                    callback(null, this.#EveThermoGetDetails(optionalParams.getcommand));
+                    callback(undefined, this.#EveThermoGetDetails(optionalParams.getcommand));
                 });
 
                 service.getCharacteristic(HAP.Characteristic.EveProgramCommand).on("set", (value, callback) => {
                     var programs = [];
-                    var scheduleTemps = [];
                     var processedData = {};
                     var valHex = decodeEveData(value);
                     var index = 0;
@@ -750,7 +743,6 @@ class HomeKitHistory {
                                 var nowTemp = valHex.substr(index, 2) == "80" ? null : parseInt(valHex.substr(index, 2), 16) * 0.5;
                                 var ecoTemp = valHex.substr(index + 2, 2) == "80" ? null : parseInt(valHex.substr(index + 2, 2), 16) * 0.5;
                                 var comfortTemp = valHex.substr(index + 4, 2) == "80" ? null : parseInt(valHex.substr(index + 4, 2), 16) * 0.5;
-                                scheduleTemps = [ecoTemp, comfortTemp];
                                 processedData.scheduleTemps = {"eco": ecoTemp, "comfort": comfortTemp};
                                 index += 6;
                                 break;
@@ -791,7 +783,7 @@ class HomeKitHistory {
                                         }
             
                                         if (start_offset != null && end_offset != null) {
-                                            times.push({"start": start_offset, "duration" : (end_offset - start_offset), "ecotemp" : scheduleTemps.eco, "comforttemp" : scheduleTemps.comfort});
+                                            times.push({"start": start_offset, "duration" : (end_offset - start_offset), "ecotemp" : processedData.scheduleTemps.eco, "comforttemp" : processedData.scheduleTemps.comfort});
                                         }
                                         index += 4;
                                     }
@@ -799,7 +791,7 @@ class HomeKitHistory {
                                 }
 
                                 this.EveThermoPersist.programs = programs;
-                                processedData.programs = this.EveThermoPersist.programs;           
+                                processedData.programs = this.EveThermoPersist.programs;      
                                 break;
                             }
 
@@ -838,8 +830,6 @@ class HomeKitHistory {
                     if (typeof optionalParams.setcommand == "function" && Object.keys(processedData).length != 0) optionalParams.setcommand(processedData);
                     callback();
                 });
-
-                this.debug && this.#outputLogging("History", false, "History linked to EveHome app for '%s'", accessoryDescription);
                 break;
             }
 
@@ -853,8 +843,6 @@ class HomeKitHistory {
                 service.updateCharacteristic(HAP.Characteristic.EveFirmware, encodeEveData(util.format("01 %s be", numberToEveHexString(809, 4))));  // firmware version (build xxxx)));
 
                 this.EveHome = {service: historyService, linkedservice: service, type: service.UUID, sub: service.subtype, evetype: "weather", fields: "0102 0202 0302", entry: 0, count: tempHistory.length, reftime: historyreftime, send: 0};
-
-                this.debug && this.#outputLogging("History", false, "History linked to EveHome app for '%s'", accessoryDescription);
                 break;
             }
 
@@ -886,8 +874,6 @@ class HomeKitHistory {
                     if (service.testCharacteristic(HAP.Characteristic.TemperatureDisplayUnits) == false) service.addCharacteristic(HAP.Characteristic.TemperatureDisplayUnits); // Needed to show history for temperature
                     service.updateCharacteristic(HAP.Characteristic.TemperatureDisplayUnits, HAP.Characteristic.TemperatureDisplayUnits.CELSIUS);  // Temperature needs to be in Celsius
                 }
-
-                this.debug && this.#outputLogging("History", false, "History linked to EveHome app for '%s'", accessoryDescription);
                 break;
             }
 
@@ -913,12 +899,12 @@ class HomeKitHistory {
                 // Setup initial values and callbacks for charateristics we are using
                 service.updateCharacteristic(HAP.Characteristic.EveLastActivation, this.#EveLastEventTime()); // time of last event in seconds since first event
                 service.getCharacteristic(HAP.Characteristic.EveLastActivation).on("get", (callback) => {
-                    callback(null, this.#EveLastEventTime());  // time of last event in seconds since first event
+                    callback(undefined, this.#EveLastEventTime());  // time of last event in seconds since first event
                 });
 
                 service.updateCharacteristic(HAP.Characteristic.EveSensitivity, this.EveMotionPersist.sensitivity);
                 service.getCharacteristic(HAP.Characteristic.EveSensitivity).on("get", (callback) => {
-                    callback(null, this.EveMotionPersist.sensitivity);
+                    callback(undefined, this.EveMotionPersist.sensitivity);
                 });
                 service.getCharacteristic(HAP.Characteristic.EveSensitivity).on("set", (value, callback) => {
                     this.EveMotionPersist.sensitivity = value;
@@ -927,7 +913,7 @@ class HomeKitHistory {
 
                 service.updateCharacteristic(HAP.Characteristic.EveDuration, this.EveMotionPersist.duration);
                 service.getCharacteristic(HAP.Characteristic.EveDuration).on("get", (callback) => {
-                    callback(null, this.EveMotionPersist.duration);
+                    callback(undefined, this.EveMotionPersist.duration);
                 });
                 service.getCharacteristic(HAP.Characteristic.EveDuration).on("set", (value, callback) => {
                     this.EveMotionPersist.duration = value; 
@@ -944,7 +930,7 @@ class HomeKitHistory {
     
                     console.log("Motion set", value)
         
-                    callback(null, encodeEveData(value));
+                    callback(undefined, encodeEveData(value));
                 });
                 service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
                     var valHex = decodeEveData(value);
@@ -975,8 +961,6 @@ class HomeKitHistory {
                     }
                     callback();
                 }); */
-
-                this.debug && this.#outputLogging("History", false, "History linked to EveHome app for '%s'", accessoryDescription);
                 break;
             }
 
@@ -1008,12 +992,12 @@ class HomeKitHistory {
                 // Setup initial values and callbacks for charateristics we are using
                 service.updateCharacteristic(HAP.Characteristic.EveDeviceStatus, this.#EveSmokeGetDetails(optionalParams.getcommand, HAP.Characteristic.EveDeviceStatus));
                 service.getCharacteristic(HAP.Characteristic.EveDeviceStatus).on("get", (callback) => {
-                    callback(null, this.#EveSmokeGetDetails(optionalParams.getcommand, HAP.Characteristic.EveDeviceStatus));
+                    callback(undefined, this.#EveSmokeGetDetails(optionalParams.getcommand, HAP.Characteristic.EveDeviceStatus));
                 });
 
                 service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, this.#EveSmokeGetDetails(optionalParams.getcommand, HAP.Characteristic.EveGetConfiguration));
                 service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
-                    callback(null, this.#EveSmokeGetDetails(optionalParams.getcommand, HAP.Characteristic.EveGetConfiguration));
+                    callback(undefined, this.#EveSmokeGetDetails(optionalParams.getcommand, HAP.Characteristic.EveGetConfiguration));
                 });
 
                 service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
@@ -1058,8 +1042,6 @@ class HomeKitHistory {
                     if (typeof optionalParams.setcommand == "function" && Object.keys(processedData).length != 0) optionalParams.setcommand(processedData);
                     callback();
                 });
-    
-                this.debug && this.#outputLogging("History", false, "History linked to EveHome app for '%s'", accessoryDescription);
                 break;
             }
 
@@ -1092,7 +1074,7 @@ class HomeKitHistory {
                 // Setup initial values and callbacks for charateristics we are using
                 service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, this.#EveAquaGetDetails(optionalParams.getcommand));
                 service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
-                    callback(null, this.#EveAquaGetDetails(optionalParams.getcommand));
+                    callback(undefined, this.#EveAquaGetDetails(optionalParams.getcommand));
                 });
 
                 service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
@@ -1277,8 +1259,6 @@ class HomeKitHistory {
                     if (typeof optionalParams.setcommand == "function" && Object.keys(processedData).length != 0) optionalParams.setcommand(processedData);
                     callback();
                 });
-
-                this.debug && this.#outputLogging("History", false, "History linked to EveHome app for '%s'", accessoryDescription);
                 break;
             }
 
@@ -1301,20 +1281,18 @@ class HomeKitHistory {
 
                 service.updateCharacteristic(HAP.Characteristic.EveElectricalCurrent, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalCurrent));
                 service.getCharacteristic(HAP.Characteristic.EveElectricalCurrent).on("get", (callback) => {
-                    callback(null, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalCurrent));
+                    callback(undefined, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalCurrent));
                 });
 
                 service.updateCharacteristic(HAP.Characteristic.EveElectricalVoltage, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalVoltage));
                 service.getCharacteristic(HAP.Characteristic.EveElectricalVoltage).on("get", (callback) => {
-                    callback(null, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalVoltage));
+                    callback(undefined, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalVoltage));
                 });
 
                 service.updateCharacteristic(HAP.Characteristic.EveElectricalWattage, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalWattage));
                 service.getCharacteristic(HAP.Characteristic.EveElectricalWattage).on("get", (callback) => {
-                    callback(null, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalWattage));
+                    callback(undefined, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalWattage));
                 });
-
-                this.debug && this.#outputLogging("History", false, "History linked to EveHome app for '%s'", accessoryDescription);
                 break;
             }
 
@@ -1342,7 +1320,7 @@ class HomeKitHistory {
                 // Setup initial values and callbacks for charateristics we are using
                 service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, this.#EveWaterGuardGetDetails(optionalParams.getcommand));
                 service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
-                    callback(null, this.#EveWaterGuardGetDetails(optionalParams.getcommand));
+                    callback(undefined, this.#EveWaterGuardGetDetails(optionalParams.getcommand));
                 });
 
                 service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
@@ -1394,15 +1372,13 @@ class HomeKitHistory {
                     };
                     callback();
                 });
-
-                this.debug && this.#outputLogging("History", false, "History linked to EveHome app for '%s'", accessoryDescription);
                 break;
             }
         }
     
         // Setup callbacks if our service successfully created
         if (typeof this.EveHome == "object" && this.EveHome.hasOwnProperty("service") == true) {
-            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveResetTotal).on("get", (callback) => {callback(null, this.historyData.reset - EPOCH_OFFSET)});   // time since history reset
+            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveResetTotal).on("get", (callback) => {callback(undefined, this.historyData.reset - EPOCH_OFFSET)});   // time since history reset
             this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryStatus).on("get", this.#EveHistoryStatus.bind(this));
             this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryEntries).on("get", this.#EveHistoryEntries.bind(this));
             this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryRequest).on("set", this.#EveHistoryRequest.bind(this));
@@ -1506,16 +1482,15 @@ class HomeKitHistory {
             });
             var ecoTemp = tempTemperatures.length == 0 ? 0 : Math.min(...tempTemperatures);
             var comfortTemp = tempTemperatures.length == 0 ? 0 : Math.max(...tempTemperatures);
-            encodedTemperatures = numberToEveHexString((ecoTemp / 0.5), 2) + numberToEveHexString((comfortTemp / 0.5), 2);
+            encodedTemperatures = numberToEveHexString(Math.round(ecoTemp * 2), 2) + numberToEveHexString(Math.round(comfortTemp * 2), 2);
         }
 
         var value = util.format(
-            "12%s 13%s 14%s 19%s fc%s f40000%s fa%s",
+            "12%s 13%s 14%s 19%s f40000%s fa%s",
             numberToEveHexString(this.EveThermoPersist.tempoffset * 10, 2),
             this.EveThermoPersist.enableschedule == true ? "01" : "00",
             this.EveThermoPersist.attached = this.EveThermoPersist.attached == true ? "c0" : "c7",
             this.EveThermoPersist.vacation == true ? "01" + numberToEveHexString(this.EveThermoPersist.vacationtemp * 2, 2) : "00ff", // away status and temp
-            numberToEveHexString(tempDateTime, 6),
             encodedTemperatures,
             encodedSchedule[0] + encodedSchedule[1] + encodedSchedule[2] + encodedSchedule[3] + encodedSchedule[4] + encodedSchedule[5] + encodedSchedule[6]);
 
@@ -1709,7 +1684,7 @@ class HomeKitHistory {
             numberToEveHexString(this.maxEntries == 0 ? MAX_HISTORY_SIZE : this.maxEntries, 4),  // history max size
             numberToEveHexString(1, 8));  // first entry
             
-        callback(null, encodeEveData(value));
+        callback(undefined, encodeEveData(value));
         // this.debug && this.#outputLogging("History", true,  "#EveHistoryStatus: history for '%s:%s' (%s) - Entries %s", this.EveHome.type, this.EveHome.sub, this.EveHome.evetype, this.EveHome.count);
     }
 
@@ -1918,7 +1893,7 @@ class HomeKitHistory {
             this.EveHome.send = 0;  // no more to send
             dataStream = "00";
         }
-        callback(null, encodeEveData(dataStream));
+        callback(undefined, encodeEveData(dataStream));
     }
 
     #EveHistoryRequest(value, callback) {
@@ -2009,267 +1984,289 @@ function EveHexStringToNumber(string, precision) {
 // Define HomeKit characteristics
 
 // Eve Reset Total
-HAP.Characteristic.EveResetTotal = function() {
-	HAP.Characteristic.call(this, "Eve Reset Total", "E863F112-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT32,
-        unit: HAP.Characteristic.Units.SECONDS, // since 2001/01/01
-		perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY, HAP.Characteristic.Perms.WRITE]
-	});
-	this.value = this.getDefaultValue();
+class EveResetTotal extends HAP.Characteristic {
+    static UUID = "E863F112-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Reset Total", EveResetTotal.UUID, {
+            format: HAP.Formats.UINT32,
+            unit: HAP.Units.SECONDS, // since 2001/01/01
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY, HAP.Perms.WRITE]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveResetTotal, HAP.Characteristic);
-HAP.Characteristic.EveResetTotal.UUID = "E863F112-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveResetTotal = EveResetTotal;
 
 // EveHistoryStatus
-HAP.Characteristic.EveHistoryStatus = function() {
-	HAP.Characteristic.call(this, "Eve History Status", "E863F116-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.DATA,
-		perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY, HAP.Characteristic.Perms.HIDDEN]
-	});
-	this.value = this.getDefaultValue();
+class EveHistoryStatus extends HAP.Characteristic {
+    static UUID = "E863F116-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve History Status", EveHistoryStatus.UUID, {
+            format: HAP.Formats.DATA,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveHistoryStatus, HAP.Characteristic);
-HAP.Characteristic.EveHistoryStatus.UUID = "E863F116-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveHistoryStatus = EveHistoryStatus;
 
 // EveHistoryEntries
-HAP.Characteristic.EveHistoryEntries = function() {
-	HAP.Characteristic.call(this, "Eve History Entries", "E863F117-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.DATA,
-		perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY, HAP.Characteristic.Perms.HIDDEN]
-	});
-	this.value = this.getDefaultValue();
+class EveHistoryEntries extends HAP.Characteristic {
+    static UUID = "E863F117-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve History Entries", EveHistoryEntries.UUID, {
+            format: HAP.Formats.DATA,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveHistoryEntries, HAP.Characteristic);
-HAP.Characteristic.EveHistoryEntries.UUID = "E863F117-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveHistoryEntries = EveHistoryEntries;
 
 // EveHistoryRequest
-HAP.Characteristic.EveHistoryRequest = function() {
-	HAP.Characteristic.call(this, "Eve History Request", "E863F11C-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.DATA,
-		perms: [HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.HIDDEN]
-	});
-	this.value = this.getDefaultValue();
+class EveHistoryRequest extends HAP.Characteristic {
+    static UUID = "E863F11C-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve History Request", EveHistoryRequest.UUID, {
+            format: HAP.Formats.DATA,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveHistoryRequest, HAP.Characteristic);
-HAP.Characteristic.EveHistoryRequest.UUID = "E863F11C-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveHistoryRequest = EveHistoryRequest;
 
 // EveSetTime
-HAP.Characteristic.EveSetTime = function() {
-	HAP.Characteristic.call(this, "Eve SetTime", "E863F121-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.DATA,
-		perms: [HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.HIDDEN]
-	});
-	this.value = this.getDefaultValue();
+class EveSetTime extends HAP.Characteristic {
+    static UUID = "E863F121-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve SetTime", EveSetTime.UUID, {
+            format: HAP.Formats.DATA,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY, HAP.Perms.HIDDEN]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveSetTime, HAP.Characteristic);
-HAP.Characteristic.EveSetTime.UUID = "E863F121-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveSetTime = EveSetTime;
 
-HAP.Characteristic.EveValvePosition = function() {
-	HAP.Characteristic.call(this, "Eve Valve Position", "E863F12E-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT8,
-        unit: HAP.Characteristic.Units.PERCENTAGE,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveValvePosition extends HAP.Characteristic {
+    static UUID = "E863F12E-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Valve Position", EveValvePosition.UUID, {
+            format: HAP.Formats.UINT8,
+            unit: HAP.Units.PERCENTAGE,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveValvePosition, HAP.Characteristic);
-HAP.Characteristic.EveValvePosition.UUID = "E863F12E-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveValvePosition = EveValvePosition;
 
-HAP.Characteristic.EveLastActivation = function() {
-	HAP.Characteristic.call(this, "Eve Last Activation", "E863F11A-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT32,
-        unit: HAP.Characteristic.Units.SECONDS,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveLastActivation extends HAP.Characteristic {
+    static UUID = "E863F11A-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Last Activation", EveLastActivation.UUID, {
+            format: HAP.Formats.UINT32,
+            unit: HAP.Units.SECONDS,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveLastActivation, HAP.Characteristic);
-HAP.Characteristic.EveLastActivation.UUID = "E863F11A-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveLastActivation = EveLastActivation;
 
-HAP.Characteristic.EveTimesOpened = function() {
-	HAP.Characteristic.call(this, "Eve Times Opened", "E863F129-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT32,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveTimesOpened extends HAP.Characteristic {
+    static UUID = "E863F129-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Times Opened", EveTimesOpened.UUID, {
+            format: HAP.Formats.UINT32,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveTimesOpened, HAP.Characteristic);
-HAP.Characteristic.EveTimesOpened.UUID = "E863F129-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveTimesOpened = EveTimesOpened;
 
-HAP.Characteristic.EveClosedDuration = function() {
-	HAP.Characteristic.call(this, "Eve Closed Duration", "E863F118-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT32,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveClosedDuration extends HAP.Characteristic {
+    static UUID = "E863F118-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Closed Duration", EveClosedDuration.UUID, {
+            format: HAP.Formats.UINT32,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveClosedDuration, HAP.Characteristic);
-HAP.Characteristic.EveClosedDuration.UUID = "E863F118-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveClosedDuration = EveClosedDuration;
 
-HAP.Characteristic.EveOpenDuration = function() {
-	HAP.Characteristic.call(this, "Eve Opened Duration", "E863F119-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT32,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveOpenDuration extends HAP.Characteristic {
+    static UUID = "E863F119-079E-48FF-8F27-9C2605A29F522";
+    constructor() {
+        super("Eve Opened Duration", EveOpenDuration.UUID, {
+            format: HAP.Formats.UINT32,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveOpenDuration, HAP.Characteristic);
-HAP.Characteristic.EveOpenDuration.UUID = "E863F119-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveOpenDuration = EveOpenDuration;
 
-HAP.Characteristic.EveProgramCommand = function() {
-	HAP.Characteristic.call(this, "Eve Program Command", "E863F12C-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.DATA,
-        perms: [HAP.Characteristic.Perms.WRITE]
-	});
-	this.value = this.getDefaultValue();
+class EveProgramCommand extends HAP.Characteristic {
+    static UUID = "E863F12C-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Program Command", EveProgramCommand.UUID, {
+            format: HAP.Formats.DATA,
+            perms: [HAP.Perms.WRITE]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveProgramCommand, HAP.Characteristic);
-HAP.Characteristic.EveProgramCommand.UUID = "E863F12C-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveProgramCommand = EveProgramCommand;
 
-HAP.Characteristic.EveProgramData = function() {
-	HAP.Characteristic.call(this, "Eve Program Data", "E863F12F-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.DATA,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveProgramData extends HAP.Characteristic {
+    static UUID = "E863F12F-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Program Data", EveProgramData.UUID, {
+            format: HAP.Formats.DATA,
+            perms: [HAP.Perms.WRITE]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveProgramData, HAP.Characteristic);
-HAP.Characteristic.EveProgramData.UUID = "E863F12F-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveProgramData = EveProgramData;
 
-HAP.Characteristic.EveElectricalVoltage = function() {
-	HAP.Characteristic.call(this, "Eve Voltage", "E863F10A-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.FLOAT,
-        unit: "V",
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveElectricalVoltage extends HAP.Characteristic {
+    static UUID = "E863F10A-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Voltage", EveElectricalVoltage.UUID, {
+            format: HAP.Formats.FLOAT,
+            unit: "V",
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveElectricalVoltage, HAP.Characteristic);
-HAP.Characteristic.EveElectricalVoltage.UUID = "E863F10A-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveElectricalVoltage = EveElectricalVoltage;
 
-HAP.Characteristic.EveElectricalCurrent = function() {
-	HAP.Characteristic.call(this, "Eve Current", "E863F126-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.FLOAT,
-        unit: "A",
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveElectricalCurrent extends HAP.Characteristic {
+    static UUID = "E863F126-079E-48FF-8F27-9C2605A29F5";
+    constructor() {
+        super("Eve Current", EveElectricalCurrent.UUID, {
+            format: HAP.Formats.FLOAT,
+            unit: "A",
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveElectricalCurrent, HAP.Characteristic);
-HAP.Characteristic.EveElectricalCurrent.UUID = "E863F126-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveElectricalCurrent = EveElectricalCurrent;
 
-HAP.Characteristic.EveTotalConsumption = function() {
-	HAP.Characteristic.call(this, "Eve Total Consumption", "E863F10C-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.FLOAT,
-        unit: 'kWh',
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveTotalConsumption extends HAP.Characteristic {
+    static UUID = "E863F10C-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Total Consumption", EveTotalConsumption.UUID, {
+            format: HAP.Formats.FLOAT,
+            unit: 'kWh',
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveTotalConsumption, HAP.Characteristic);
-HAP.Characteristic.EveTotalConsumption.UUID = "E863F10C-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveTotalConsumption = EveTotalConsumption;
 
-HAP.Characteristic.EveElectricalWattage = function() {
-	HAP.Characteristic.call(this, "Eve Watts", "E863F10D-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.FLOAT,
-        unit: "W",
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveElectricalWattage extends HAP.Characteristic {
+    static UUID = "E863F10D-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Watts", EveElectricalWattage.UUID, {
+            format: HAP.Formats.FLOAT,
+            unit: "W",
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveElectricalWattage, HAP.Characteristic);
-HAP.Characteristic.EveElectricalWattage.UUID = "E863F10D-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveElectricalWattage = EveElectricalWattage;
 
-HAP.Characteristic.EveGetConfiguration = function() {
-	HAP.Characteristic.call(this, "Eve Get Configuration", "E863F131-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.DATA,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveGetConfiguration extends HAP.Characteristic {
+    static UUID = "E863F131-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Get Configuration", EveGetConfiguration.UUID, {
+            format: HAP.Formats.DATA,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveGetConfiguration, HAP.Characteristic);
-HAP.Characteristic.EveGetConfiguration.UUID = "E863F131-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveGetConfiguration = EveGetConfiguration;
 
-HAP.Characteristic.EveSetConfiguration = function() {
-	HAP.Characteristic.call(this, "Eve Set Configuration", "E863F11D-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.DATA,
-        perms: [HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.HIDDEN]
-	});
-	this.value = this.getDefaultValue();
+class EveSetConfiguration extends HAP.Characteristic {
+    static UUID = "E863F11D-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Set Configuration", EveSetConfiguration.UUID, {
+            format: HAP.Formats.DATA,
+            perms: [HAP.Perms.WRITE, HAP.Perms.HIDDEN]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveSetConfiguration, HAP.Characteristic);
-HAP.Characteristic.EveSetConfiguration.UUID = "E863F11D-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveSetConfiguration = EveSetConfiguration;
 
-HAP.Characteristic.EveFirmware = function() {
-	HAP.Characteristic.call(this, "Eve Firmware", "E863F11E-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.DATA,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveFirmware extends HAP.Characteristic {
+    static UUID = "E863F11E-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Firmware", EveFirmware.UUID, {
+            format: HAP.Formats.DATA,
+            perms: [HAP.Perms.READ, HAP.Perms.WRITE, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveFirmware, HAP.Characteristic);
-HAP.Characteristic.EveFirmware.UUID = "E863F11E-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveFirmware = EveFirmware;
 
-HAP.Characteristic.EveSensitivity = function() {
-	HAP.Characteristic.call(this, "Eve Motion Sensitivity", "E863F120-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT8,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.NOTIFY],
-        minValue: 0,
-        maxValue: 7,
-        validValues: [0, 4, 7]
-	});
-	this.value = this.getDefaultValue();
+class EveSensitivity extends HAP.Characteristic {
+    static UUID = "E863F120-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Motion Sensitivity", EveSensitivity.UUID, {
+            format: HAP.Formats.UINT8,
+            perms: [HAP.Perms.READ, HAP.Perms.WRITE, HAP.Perms.NOTIFY],
+            minValue: 0,
+            maxValue: 7,
+            validValues: [0, 4, 7]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveSensitivity, HAP.Characteristic);
-HAP.Characteristic.EveSensitivity.UUID = "E863F120-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveSensitivity = EveSensitivity;
 HAP.Characteristic.EveSensitivity.HIGH = 0;
 HAP.Characteristic.EveSensitivity.MEDIUM = 4;
 HAP.Characteristic.EveSensitivity.LOW = 7;
 
-HAP.Characteristic.EveDuration = function() {
-	HAP.Characteristic.call(this, "Eve Motion Duration", "E863F12D-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT16,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.NOTIFY],
-        minValue: 5,
-        maxValue: 54000,
-        validValues: [5, 10, 20, 30, 60, 120, 300, 600, 1200, 1800, 3600, 7200, 10800, 18000, 36000, 43200, 54000]
-	});
-	this.value = this.getDefaultValue();
+class EveDuration extends HAP.Characteristic {
+    static UUID = "E863F12D-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Motion Duration", EveDuration.UUID, {
+            format: HAP.Formats.UINT16,
+            perms: [HAP.Perms.READ, HAP.Perms.WRITE, HAP.Perms.NOTIFY],
+            minValue: 5,
+            maxValue: 54000,
+            validValues: [5, 10, 20, 30, 60, 120, 300, 600, 1200, 1800, 3600, 7200, 10800, 18000, 36000, 43200, 54000]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveDuration, HAP.Characteristic);
-HAP.Characteristic.EveDuration.UUID = "E863F12D-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveDuration = EveDuration;
 
-HAP.Characteristic.EveDeviceStatus = function() {
-	HAP.Characteristic.call(this, "Eve Device Status", "E863F134-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT32,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class EveDeviceStatus extends HAP.Characteristic {
+    static UUID = "E863F134-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Device Status", EveDeviceStatus.UUID, {
+            format: HAP.Formats.UINT32,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveDeviceStatus, HAP.Characteristic);
-HAP.Characteristic.EveDeviceStatus.UUID = "E863F134-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveDeviceStatus = EveDeviceStatus;
 HAP.Characteristic.EveDeviceStatus.SMOKE_DETECTED = (1 << 0);
 HAP.Characteristic.EveDeviceStatus.HEAT_DETECTED = (1 << 1);
 HAP.Characteristic.EveDeviceStatus.ALARM_TEST_ACTIVE = (1 << 2);
@@ -2281,63 +2278,68 @@ HAP.Characteristic.EveDeviceStatus.FLASH_STATUS_LED = (1 << 15);
 HAP.Characteristic.EveDeviceStatus.ALARM_PAUSED = (1 << 24);
 HAP.Characteristic.EveDeviceStatus.ALARM_MUTED = (1 << 25);
 
-HAP.Characteristic.EveAirPressure = function() {
-	HAP.Characteristic.call(this, "Eve Air Pressure", "E863F10F-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT16,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: "hPa",
-        minValue: 700,
-        maxValue: 1100,
-	});
-	this.value = this.getDefaultValue();
+class EveAirPressure extends HAP.Characteristic {
+    static UUID = "E863F10F-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Air Pressure", EveAirPressure.UUID, {
+            format: HAP.Formats.UINT16,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: "hPa",
+            minValue: 700,
+            maxValue: 1100
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveAirPressure, HAP.Characteristic);
-HAP.Characteristic.EveAirPressure.UUID = "E863F10F-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveAirPressure = EveAirPressure;
 
-HAP.Characteristic.EveElevation = function() {
-	HAP.Characteristic.call(this, "Eve Elevation", "E863F130-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.INT,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.WRITE, HAP.Characteristic.Perms.NOTIFY],
-        unit: "m",
-        minValue: -430,
-        maxValue: 8850,
-        minStep: 10,
-	});
-	this.value = this.getDefaultValue();
+class EveElevation extends HAP.Characteristic {
+    static UUID = "E863F130-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Elevation", EveElevation.UUID, {
+            format: HAP.Formats.INT,
+            perms: [HAP.Perms.READ, HAP.Perms.WRITE, HAP.Perms.NOTIFY],
+            unit: "m",
+            minValue: -430,
+            maxValue: 8850,
+            minStep: 10,
+            maxValue: 1100
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveElevation, HAP.Characteristic);
-HAP.Characteristic.EveElevation.UUID = "E863F130-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveElevation = EveElevation;
 
-HAP.Characteristic.EveVOCLevel = function() {
-	HAP.Characteristic.call(this, "VOC Level", "E863F10B-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT16,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: "ppm",
-        minValue: 5,
-        maxValue: 5000,
-        minStep: 5,
-	});
-	this.value = this.getDefaultValue();
+class EveVOCLevel extends HAP.Characteristic {
+    static UUID = "E863F10B-079E-48FF-8F27-9C2605A29F5";
+    constructor() {
+        super("VOC Level", EveVOCLevel.UUID, {
+            format: HAP.Formats.UINT16,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: "ppm",
+            minValue: 5,
+            maxValue: 5000,
+            minStep: 5,
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveVOCLevel, HAP.Characteristic);
-HAP.Characteristic.EveVOCLevel.UUID = "E863F10B-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveVOCLevel = EveVOCLevel;
 
-HAP.Characteristic.EveWeatherTrend = function() {
-	HAP.Characteristic.call(this, "Eve Weather Trend", "E863F136-079E-48FF-8F27-9C2605A29F52");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT8,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        minValue: 0,
-        maxValue: 15,
-        minStep: 1,
-	});
-	this.value = this.getDefaultValue();
+class EveWeatherTrend extends HAP.Characteristic {
+    static UUID = "E863F136-079E-48FF-8F27-9C2605A29F52";
+    constructor() {
+        super("Eve Weather Trend", EveWeatherTrend.UUID, {
+            format: HAP.Formats.UINT8,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            minValue: 0,
+            maxValue: 15,
+            minStep: 1,
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.EveWeatherTrend, HAP.Characteristic);
-HAP.Characteristic.EveWeatherTrend.UUID = "E863F136-079E-48FF-8F27-9C2605A29F52";
+HAP.Characteristic.EveWeatherTrend = EveWeatherTrend;
 HAP.Characteristic.EveWeatherTrend.BLANK = 0; // also: 2, 8, 10
 HAP.Characteristic.EveWeatherTrend.SUN = 1; // also: 9
 HAP.Characteristic.EveWeatherTrend.CLOUDS_SUN = 3; // also: 11
@@ -2345,328 +2347,354 @@ HAP.Characteristic.EveWeatherTrend.RAIN = 4; // also: 5, 6, 7
 HAP.Characteristic.EveWeatherTrend.RAIN_WIND = 12; // also: 13, 14, 15
 
 // EveHomeHistory Service
-HAP.Service.EveHomeHistory = function (displayName, subtype) {
-	HAP.Service.call(this, displayName, "E863F007-079E-48FF-8F27-9C2605A29F52", subtype);
+class EveHomeHistory extends HAP.Service {
+    static UUID = "E863F007-079E-48FF-8F27-9C2605A29F52";
+    constructor(displayName, subtype) {
+        super(displayName, EveHomeHistory.UUID, subtype);
 
-    // Required Characteristics
-    this.addCharacteristic(HAP.Characteristic.EveResetTotal);
-    this.addCharacteristic(HAP.Characteristic.EveHistoryStatus);
-    this.addCharacteristic(HAP.Characteristic.EveHistoryEntries);
-    this.addCharacteristic(HAP.Characteristic.EveHistoryRequest);
-    this.addCharacteristic(HAP.Characteristic.EveSetTime);
+        // Required Characteristics
+        this.addCharacteristic(HAP.Characteristic.EveResetTotal);
+        this.addCharacteristic(HAP.Characteristic.EveHistoryStatus);
+        this.addCharacteristic(HAP.Characteristic.EveHistoryEntries);
+        this.addCharacteristic(HAP.Characteristic.EveHistoryRequest);
+        this.addCharacteristic(HAP.Characteristic.EveSetTime);
+    }
 }
-util.inherits(HAP.Service.EveHomeHistory, HAP.Service);
-HAP.Service.EveHomeHistory.UUID = "E863F007-079E-48FF-8F27-9C2605A29F52";
+HAP.Service.EveHomeHistory = EveHomeHistory;
 
 // Eve custom air pressure service
-HAP.Service.EveAirPressureSensor = function(displayName, subtype) {
-	HAP.Service.call(this, displayName, "E863F00A-079E-48FF-8F27-9C2605A29F52", subtype);
+class EveAirPressureSensor extends HAP.Service {
+    static UUID = "E863F00A-079E-48FF-8F27-9C2605A29F52";
+    constructor(displayName, subtype) {
+        super(displayName, EveAirPressureSensor.UUID, subtype);
 
-    // Required Characteristics
-    this.addCharacteristic(HAP.Characteristic.EveAirPressure);
-    this.addCharacteristic(HAP.Characteristic.EveElevation);
+        // Required Characteristics
+        this.addCharacteristic(HAP.Characteristic.EveAirPressure);
+        this.addCharacteristic(HAP.Characteristic.EveElevation);
+    }
 }
-util.inherits(HAP.Service.EveAirPressureSensor, HAP.Service);
-HAP.Service.EveAirPressureSensor.UUID = "E863F00A-079E-48FF-8F27-9C2605A29F52";
-
+HAP.Service.EveAirPressureSensor = EveAirPressureSensor;
 
 // Other UUIDs Eve Home recognises
-HAP.Characteristic.ApparentTemperature = function() {
-	HAP.Characteristic.call(this, "ApparentTemperature", "C1283352-3D12-4777-ACD5-4734760F1AC8");
-	this.setProps({
-        format: HAP.Characteristic.Formats.FLOAT,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: HAP.Characteristic.Units.CELSIUS,
-        minValue: -40,
-        maxValue: 100,
-        minStep: 0.1
-	});
-	this.value = this.getDefaultValue();
+class ApparentTemperature extends HAP.Characteristic {
+    static UUID = "C1283352-3D12-4777-ACD5-4734760F1AC8";
+    constructor() {
+        super("Apparent Temperature", ApparentTemperature.UUID, {
+            format: HAP.Formats.FLOAT,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: HAP.Units.CELSIUS,
+            minValue: -40,
+            maxValue: 100,
+            minStep: 0.1
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.ApparentTemperature, HAP.Characteristic);
-HAP.Characteristic.ApparentTemperature.UUID = "C1283352-3D12-4777-ACD5-4734760F1AC8";
+HAP.Characteristic.ApparentTemperature = ApparentTemperature;
 
-HAP.Characteristic.CloudCover = function() {
-	HAP.Characteristic.call(this, "Cloud Cover", "64392FED-1401-4F7A-9ADB-1710DD6E3897");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT8,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: HAP.Characteristic.Units.PERCENTAGE,
-        minValue: 0,
-        maxValue: 100
-	});
-	this.value = this.getDefaultValue();
+class CloudCover extends HAP.Characteristic {
+    static UUID = "64392FED-1401-4F7A-9ADB-1710DD6E3897";
+    constructor() {
+        super("Cloud Cover", CloudCover.UUID, {
+            format: HAP.Formats.UINT8,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: HAP.Units.PERCENTAGE,
+            minValue: 0,
+            maxValue: 100
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.CloudCover, HAP.Characteristic);
-HAP.Characteristic.CloudCover.UUID = "64392FED-1401-4F7A-9ADB-1710DD6E3897";
+HAP.Characteristic.CloudCover = CloudCover;
 
-HAP.Characteristic.Condition = function() {
-	HAP.Characteristic.call(this, "Condition", "CD65A9AB-85AD-494A-B2BD-2F380084134D");
-	this.setProps({
-        format: HAP.Characteristic.Formats.STRING,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class Condition extends HAP.Characteristic {
+    static UUID = "CD65A9AB-85AD-494A-B2BD-2F380084134D";
+    constructor() {
+        super("Condition", Condition.UUID, {
+            format: HAP.Formats.STRING,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.Condition, HAP.Characteristic);
-HAP.Characteristic.Condition.UUID = "CD65A9AB-85AD-494A-B2BD-2F380084134D";
+HAP.Characteristic.Condition = Condition;
 
-HAP.Characteristic.ConditionCategory = function() {
-	HAP.Characteristic.call(this, "Condition Category", "CD65A9AB-85AD-494A-B2BD-2F380084134C");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT8,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        minValue: 0,
-        maxValue: 9
-	});
-	this.value = this.getDefaultValue();
+class ConditionCategory extends HAP.Characteristic {
+    static UUID = "CD65A9AB-85AD-494A-B2BD-2F380084134C";
+    constructor() {
+        super("Condition Category", ConditionCategory.UUID, {
+            format: HAP.Formats.UINT8,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            minValue: 0,
+            maxValue: 9
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.ConditionCategory, HAP.Characteristic);
-HAP.Characteristic.ConditionCategory.UUID = "CD65A9AB-85AD-494A-B2BD-2F380084134C";
+HAP.Characteristic.ConditionCategory = ConditionCategory;
 
-HAP.Characteristic.DewPoint = function() {
-	HAP.Characteristic.call(this, "Dew Point", "095C46E2-278E-4E3C-B9E7-364622A0F501");
-	this.setProps({
-        format: HAP.Characteristic.Formats.FLOAT,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: HAP.Characteristic.Units.CELSIUS,
-        minValue: -40,
-        maxValue: 100,
-        minStep: 0.1
-	});
-	this.value = this.getDefaultValue();
+class DewPoint extends HAP.Characteristic {
+    static UUID = "095C46E2-278E-4E3C-B9E7-364622A0F501";
+    constructor() {
+        super("Dew Point", DewPoint.UUID, {
+            format: HAP.Formats.FLOAT,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: HAP.Units.CELSIUS,
+            minValue: -40,
+            maxValue: 100,
+            minStep: 0.1
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.DewPoint, HAP.Characteristic);
-HAP.Characteristic.DewPoint.UUID = "095C46E2-278E-4E3C-B9E7-364622A0F501";
+HAP.Characteristic.DewPoint = DewPoint;
 
-HAP.Characteristic.ForecastDay = function() {
-	HAP.Characteristic.call(this, "Day", "57F1D4B2-0E7E-4307-95B5-808750E2C1C7");
-	this.setProps({
-        format: HAP.Characteristic.Formats.STRING,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class ForecastDay extends HAP.Characteristic {
+    static UUID = "57F1D4B2-0E7E-4307-95B5-808750E2C1C7";
+    constructor() {
+        super("Day", ForecastDay.UUID, {
+            format: HAP.Formats.STRING,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.ForecastDay, HAP.Characteristic);
-HAP.Characteristic.ForecastDay.UUID = "57F1D4B2-0E7E-4307-95B5-808750E2C1C7";
+HAP.Characteristic.ForecastDay = ForecastDay;
 
-HAP.Characteristic.MaximumWindSpeed = function() {
-	HAP.Characteristic.call(this, "Maximum Wind Speed", "6B8861E5-D6F3-425C-83B6-069945FFD1F1");
-	this.setProps({
-        format: HAP.Characteristic.Formats.FLOAT,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: "km/h",
-        minValue: 0,
-        maxValue: 150,
-        minStep: 0.1
-	});
-	this.value = this.getDefaultValue();
+class MaximumWindSpeed extends HAP.Characteristic {
+    static UUID = "6B8861E5-D6F3-425C-83B6-069945FFD1F1";
+    constructor() {
+        super("Maximum Wind Speed", MaximumWindSpeed.UUID, {
+            format: HAP.Formats.FLOAT,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: "km/h",
+            minValue: 0,
+            maxValue: 150,
+            minStep: 0.1
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.MaximumWindSpeed, HAP.Characteristic);
-HAP.Characteristic.MaximumWindSpeed.UUID = "6B8861E5-D6F3-425C-83B6-069945FFD1F1";
+HAP.Characteristic.MaximumWindSpeed = MaximumWindSpeed;
 
-HAP.Characteristic.MinimumTemperature = function() {
-	HAP.Characteristic.call(this, "Minimum Temperature", "707B78CA-51AB-4DC9-8630-80A58F07E41");
-	this.setProps({
-        format: HAP.Characteristic.Formats.FLOAT,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: HAP.Characteristic.Units.CELSIUS,
-        minValue: -40,
-        maxValue: 100,
-        minStep: 0.1
-	});
-	this.value = this.getDefaultValue();
+class MinimumTemperature extends HAP.Characteristic {
+    static UUID = "707B78CA-51AB-4DC9-8630-80A58F07E411";
+    constructor() {
+        super("Maximum Wind Speed", MinimumTemperature.UUID, {
+            format: HAP.Formats.FLOAT,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: HAP.Units.CELSIUS,
+            minValue: -40,
+            maxValue: 100,
+            minStep: 0.1
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.MinimumTemperature, HAP.Characteristic);
-HAP.Characteristic.MinimumTemperature.UUID = "707B78CA-51AB-4DC9-8630-80A58F07E41";
+HAP.Characteristic.MinimumTemperature = MinimumTemperature;
 
-HAP.Characteristic.ObservationStation = function() {
-	HAP.Characteristic.call(this, "Observation Station", "D1B2787D-1FC4-4345-A20E-7B5A74D693ED");
-	this.setProps({
-        format: HAP.Characteristic.Formats.STRING,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class ObservationStation extends HAP.Characteristic {
+    static UUID = "D1B2787D-1FC4-4345-A20E-7B5A74D693ED";
+    constructor() {
+        super("Observation Station", ObservationStation.UUID, {
+            format: HAP.Formats.STRING,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.ObservationStation, HAP.Characteristic);
-HAP.Characteristic.ObservationStation.UUID = "D1B2787D-1FC4-4345-A20E-7B5A74D693ED";
+HAP.Characteristic.ObservationStation = ObservationStation;
 
-HAP.Characteristic.ObservationTime = function() {
-	HAP.Characteristic.call(this, "Observation Time", "234FD9F1-1D33-4128-B622-D052F0C402AF");
-	this.setProps({
-        format: HAP.Characteristic.Formats.STRING,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class ObservationTime extends HAP.Characteristic {
+    static UUID = "234FD9F1-1D33-4128-B622-D052F0C402AF";
+    constructor() {
+        super("Observation Time", ObservationTime.UUID, {
+            format: HAP.Formats.STRING,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.ObservationTime, HAP.Characteristic);
-HAP.Characteristic.ObservationTime.UUID = "234FD9F1-1D33-4128-B622-D052F0C402AF";
+HAP.Characteristic.ObservationTime = ObservationTime;
 
-HAP.Characteristic.Ozone = function() {
-	HAP.Characteristic.call(this, "Ozone", "BBEFFDDD-1BCD-4D75-B7CD-B57A90A04D13");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT8,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: "DU",
-        minValue: 0,
-        maxValue: 500
-	});
-	this.value = this.getDefaultValue();
+class Ozone extends HAP.Characteristic {
+    static UUID = "BBEFFDDD-1BCD-4D75-B7CD-B57A90A04D13";
+    constructor() {
+        super("Ozone", Ozone.UUID, {
+            format: HAP.Formats.UINT8,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: "DU",
+            minValue: 0,
+            maxValue: 500
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.Ozone, HAP.Characteristic);
-HAP.Characteristic.Ozone.UUID = "BBEFFDDD-1BCD-4D75-B7CD-B57A90A04D13";
+HAP.Characteristic.Ozone = Ozone;
 
-HAP.Characteristic.Rain = function() {
-	HAP.Characteristic.call(this, "Rain", "F14EB1AD-E000-4EF4-A54F-0CF07B2E7BE7");
-	this.setProps({
-        format: HAP.Characteristic.Formats.BOOL,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class Rain extends HAP.Characteristic {
+    static UUID = "F14EB1AD-E000-4EF4-A54F-0CF07B2E7BE7";
+    constructor() {
+        super("Rain", Rain.UUID, {
+            format: HAP.Formats.BOOL,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.Rain, HAP.Characteristic);
-HAP.Characteristic.Rain.UUID = "F14EB1AD-E000-4EF4-A54F-0CF07B2E7BE7";
+HAP.Characteristic.Rain = Rain;
 
-HAP.Characteristic.RainLastHour = function() {
-	HAP.Characteristic.call(this, "Rain Last Hour", "10C88F40-7EC4-478C-8D5A-BD0C3CCE14B7");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT16,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: "mm",
-        minValue: 0,
-        maxValue: 200
-	});
-	this.value = this.getDefaultValue();
+class RainLastHour extends HAP.Characteristic {
+    static UUID = "10C88F40-7EC4-478C-8D5A-BD0C3CCE14B7";
+    constructor() {
+        super("Rain Last Hour", RainLastHour.UUID, {
+            format: HAP.Formats.UINT16,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: "mm",
+            minValue: 0,
+            maxValue: 200
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.RainLastHour, HAP.Characteristic);
-HAP.Characteristic.RainLastHour.UUID = "10C88F40-7EC4-478C-8D5A-BD0C3CCE14B7";
+HAP.Characteristic.RainLastHour = RainLastHour;
 
-HAP.Characteristic.TotalRain = function() {
-	HAP.Characteristic.call(this, "Total Rain", "CCC04890-565B-4376-B39A-3113341D9E0F");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT16,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: "mm",
-        minValue: 0,
-        maxValue: 2000
-	});
-	this.value = this.getDefaultValue();
+class RainProbability extends HAP.Characteristic {
+    static UUID = "FC01B24F-CF7E-4A74-90DB-1B427AF1FFA3";
+    constructor() {
+        super("Rain Probability", RainProbability.UUID, {
+            format: HAP.Formats.UINT8,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: HAP.Units.PERCENTAGE,
+            minValue: 0,
+            maxValue: 100
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.TotalRain, HAP.Characteristic);
-HAP.Characteristic.TotalRain.UUID = "CCC04890-565B-4376-B39A-3113341D9E0F";
+HAP.Characteristic.RainProbability = RainProbability;
 
-HAP.Characteristic.RainProbability = function() {
-	HAP.Characteristic.call(this, "Rain Probability", "FC01B24F-CF7E-4A74-90DB-1B427AF1FFA3");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT8,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: HAP.Characteristic.Units.PERCENTAGE,
-        minValue: 0,
-        maxValue: 100
-	});
-	this.value = this.getDefaultValue();
+class TotalRain extends HAP.Characteristic {
+    static UUID = "CCC04890-565B-4376-B39A-3113341D9E0F";
+    constructor() {
+        super("Total Rain", TotalRain.UUID, {
+            format: HAP.Formats.UINT16,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: "mm",
+            minValue: 0,
+            maxValue: 2000
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.RainProbability, HAP.Characteristic);
-HAP.Characteristic.RainProbability.UUID = "FC01B24F-CF7E-4A74-90DB-1B427AF1FFA3";
+HAP.Characteristic.TotalRain = TotalRain;
 
-HAP.Characteristic.Snow = function() {
-	HAP.Characteristic.call(this, "Snow", "F14EB1AD-E000-4CE6-BD0E-384F9EC4D5DD");
-	this.setProps({
-        format: HAP.Characteristic.Formats.BOOL,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class Snow extends HAP.Characteristic {
+    static UUID = "F14EB1AD-E000-4CE6-BD0E-384F9EC4D5DD";
+    constructor() {
+        super("Snow", Snow.UUID, {
+            format: HAP.Formats.BOOL,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.Snow, HAP.Characteristic);
-HAP.Characteristic.Snow.UUID = "F14EB1AD-E000-4CE6-BD0E-384F9EC4D5DD";
+HAP.Characteristic.Snow = Snow;
 
-HAP.Characteristic.SolarRadiation = function() {
-	HAP.Characteristic.call(this, "Solar Radiation", "1819A23E-ECAB-4D39-B29A-7364D299310B");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT16,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: "W/m²",
-        minValue: 0,
-        maxValue: 2000
-	});
-	this.value = this.getDefaultValue();
+class SolarRadiation extends HAP.Characteristic {
+    static UUID = "1819A23E-ECAB-4D39-B29A-7364D299310B";
+    constructor() {
+        super("Solar Radiation", SolarRadiation.UUID, {
+            format: HAP.Formats.UINT16,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: "W/m²",
+            minValue: 0,
+            maxValue: 2000
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.SolarRadiation, HAP.Characteristic);
-HAP.Characteristic.SolarRadiation.UUID = "1819A23E-ECAB-4D39-B29A-7364D299310B";
+HAP.Characteristic.SolarRadiation = SolarRadiation;
 
-HAP.Characteristic.SunriseTime = function() {
-	HAP.Characteristic.call(this, "Sunrise", "0D96F60E-3688-487E-8CEE-D75F05BB3008");
-	this.setProps({
-        format: HAP.Characteristic.Formats.STRING,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class SunriseTime extends HAP.Characteristic {
+    static UUID = "0D96F60E-3688-487E-8CEE-D75F05BB3008";
+    constructor() {
+        super("Sunrise", SunriseTime.UUID, {
+            format: HAP.Formats.STRING,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.SunriseTime, HAP.Characteristic);
-HAP.Characteristic.SunriseTime.UUID = "0D96F60E-3688-487E-8CEE-D75F05BB3008";
+HAP.Characteristic.SunriseTime = SunriseTime;
 
-HAP.Characteristic.SunsetTime = function() {
-	HAP.Characteristic.call(this, "Sunset", "3DE24EE0-A288-4E15-A5A8-EAD2451B727C");
-	this.setProps({
-        format: HAP.Characteristic.Formats.STRING,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class SunsetTime extends HAP.Characteristic {
+    static UUID = "3DE24EE0-A288-4E15-A5A8-EAD2451B727C";
+    constructor() {
+        super("Sunset", SunsetTime.UUID, {
+            format: HAP.Formats.STRING,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.SunsetTime, HAP.Characteristic);
-HAP.Characteristic.SunsetTime.UUID = "3DE24EE0-A288-4E15-A5A8-EAD2451B727C";
+HAP.Characteristic.SunsetTime = SunsetTime;
 
-HAP.Characteristic.UVIndex = function() {
-	HAP.Characteristic.call(this, "UV Index", "05BA0FE0-B848-4226-906D-5B64272E05CE");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT8,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        minValue: 0,
-        maxValue: 16
-	});
-	this.value = this.getDefaultValue();
+class UVIndex extends HAP.Characteristic {
+    static UUID = "05BA0FE0-B848-4226-906D-5B64272E05CE";
+    constructor() {
+        super("UV Index", UVIndex.UUID, {
+            format: HAP.Formats.UINT8,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            minValue: 0,
+            maxValue: 16
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.UVIndex, HAP.Characteristic);
-HAP.Characteristic.UVIndex.UUID = "05BA0FE0-B848-4226-906D-5B64272E05CE";
+HAP.Characteristic.UVIndex = UVIndex;
 
-HAP.Characteristic.Visibility = function() {
-	HAP.Characteristic.call(this, "Visibility", "D24ECC1E-6FAD-4FB5-8137-5AF88BD5E857");
-	this.setProps({
-        format: HAP.Characteristic.Formats.UINT8,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: "km",
-        minValue: 0,
-        maxValue: 100
-	});
-	this.value = this.getDefaultValue();
+class Visibility extends HAP.Characteristic {
+    static UUID = "D24ECC1E-6FAD-4FB5-8137-5AF88BD5E857";
+    constructor() {
+        super("Visibility", Visibility.UUID, {
+            format: HAP.Formats.UINT8,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: "km",
+            minValue: 0,
+            maxValue: 100
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.Visibility, HAP.Characteristic);
-HAP.Characteristic.Visibility.UUID = "D24ECC1E-6FAD-4FB5-8137-5AF88BD5E857";
+HAP.Characteristic.Visibility = Visibility;
 
-HAP.Characteristic.WindDirection = function() {
-	HAP.Characteristic.call(this, "Wind Direction", "46F1284C-1912-421B-82F5-EB75008B167E");
-	this.setProps({
-        format: HAP.Characteristic.Formats.STRING,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY]
-	});
-	this.value = this.getDefaultValue();
+class WindDirection extends HAP.Characteristic {
+    static UUID = "46F1284C-1912-421B-82F5-EB75008B167E";
+    constructor() {
+        super("Wind Direction", WindDirection.UUID, {
+            format: HAP.Formats.STRING,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY]
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.WindDirection, HAP.Characteristic);
-HAP.Characteristic.WindDirection.UUID = "46F1284C-1912-421B-82F5-EB75008B167E";
+HAP.Characteristic.WindDirection = WindDirection;
 
-HAP.Characteristic.WindSpeed = function() {
-	HAP.Characteristic.call(this, "Wind Speed", "49C8AE5A-A3A5-41AB-BF1F-12D5654F9F41");
-	this.setProps({
-        format: HAP.Characteristic.Formats.FLOAT,
-        perms: [HAP.Characteristic.Perms.READ, HAP.Characteristic.Perms.NOTIFY],
-        unit: "km/h",
-        minValue: 0,
-        maxValue: 150,
-        minStep: 0.1
-	});
-	this.value = this.getDefaultValue();
+class WindSpeed extends HAP.Characteristic {
+    static UUID = "49C8AE5A-A3A5-41AB-BF1F-12D5654F9F41";
+    constructor() {
+        super("Wind Speed", WindSpeed.UUID, {
+            format: HAP.Formats.FLOAT,
+            perms: [HAP.Perms.READ, HAP.Perms.NOTIFY],
+            unit: "km/h",
+            minValue: 0,
+            maxValue: 150,
+            minStep: 0.1
+        });
+        this.value = this.getDefaultValue();
+    }
 }
-util.inherits(HAP.Characteristic.WindSpeed, HAP.Characteristic);
-HAP.Characteristic.WindSpeed.UUID = "49C8AE5A-A3A5-41AB-BF1F-12D5654F9F41";
+HAP.Characteristic.WindSpeed = WindSpeed;
 
 module.exports = HomeKitHistory;

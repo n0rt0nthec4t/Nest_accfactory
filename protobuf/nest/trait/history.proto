@@ -9,6 +9,92 @@ import "../../weave/common.proto";
 
 package nest.trait.history;
 
+message CameraObservationHistoryTrait {
+    message CameraObservationHistoryRequest {
+        google.protobuf.Timestamp queryStartTime = 1;
+        google.protobuf.Timestamp queryEndTime = 2;
+    }
+
+    message CameraObservationHistoryResponse {
+        message CameraEventTimeWindow {
+            enum EventType {
+                EVENT_UNSPECIFIED = 0;
+                EVENT_MOTION = 1;
+                EVENT_SOUND = 2;
+                EVENT_PERSON = 3;
+                EVENT_FACE = 4;
+                EVENT_UNFAMILIAR_FACE = 5;
+                EVENT_PERSON_TALKING = 6;
+                EVENT_DOG_BARKING = 7;
+                EVENT_DOORBELL = 8;
+                EVENT_PACKAGE_DELIVERED = 9;
+                EVENT_PACKAGE_RETRIEVED = 10;
+                EVENT_SMOKE_ALARM = 11;
+                EVENT_CO_ALARM = 12;
+                EVENT_FIRE_ALARM = 13;
+                EVENT_GLASS_BREAK = 14;
+                EVENT_OFFLINE = 15;
+                EVENT_BABY_CRYING = 16;
+                EVENT_DOOR_KNOCK = 17;
+                EVENT_VEHICLE = 18;
+                EVENT_FACE_OTHER = 19;
+                EVENT_PACKAGE_IN_TRANSIT = 20;
+                EVENT_ANIMAL_DOG = 21;
+                EVENT_ANIMAL_CAT = 22;
+                EVENT_ANIMAL = 23;
+                EVENT_MAGIC_MOMENT = 24;
+                EVENT_CTD = 25;
+                EVENT_CMDT = 26;
+                EVENT_TALKBACK = 27;
+                EVENT_SECURITY_ALARM = 28;
+                EVENT_NOT_A_FACE = 29;
+                EVENT_DOOR_OPEN = 30;
+                EVENT_DOOR_CLOSE = 31;
+                EVENT_DOOR_AJAR = 32;
+                EVENT_UNRECOGNIZED = 33;
+            }
+
+            message CameraEvent {
+                string eventId = 1;
+                google.protobuf.Timestamp startTime = 2;
+                google.protobuf.Timestamp endTime = 3;
+                repeated EventType eventType = 4;
+                FamiliarFace familiarFace = 5;
+                repeated ActivityZone activityZone = 6;
+                EventUrls eventUrls = 7;
+            }
+
+            message EventUrls {
+                string snapshotUrl = 1;
+                google.protobuf.StringValue clipUrl = 2;
+            }
+
+            message FamiliarFace {
+                string faceId = 1;
+                string faceName = 2;
+                string facePictureUrl = 4;
+            }
+
+            message ActivityZone {
+                uint32 zoneIndex = 1;
+                string name = 2;
+                uint32 internalIndex = 3;
+            }
+
+            string uuid = 1;
+            google.protobuf.Timestamp startTime = 2;
+            google.protobuf.Timestamp endTime = 3;
+            repeated CameraEvent cameraEvent = 4;
+            repeated ActivityZone activityZone = 6;
+            FamiliarFace familiarFace = 7;
+            EventUrls timeWindowUrls = 8;
+            int32 unknown = 10;
+        }
+
+        CameraEventTimeWindow cameraEventWindow = 1;
+    }
+}
+
 message EnergyHistoryTrait {
     enum LegacyEnergyWinner {
         LEGACY_ENERGY_WINNER_UNSPECIFIED = 0;

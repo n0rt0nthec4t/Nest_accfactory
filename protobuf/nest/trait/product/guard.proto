@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-import "weave/common.proto";
+import "../../../weave/common.proto";
 
 package nest.trait.product.guard;
 

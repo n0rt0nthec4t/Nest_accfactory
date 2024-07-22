@@ -1,8 +1,10 @@
 # version of required ffmpeg binary is specified in FFMPEG_VERSION
-ARG FFMPEG_VERSION=7.0
+ARG FFMPEG_VERSION=7.0.1
 
-# version of node docker we will use. Pegged at node v18.x as bug in docker builds on armv7 when using later versions
-ARG NODE_VERSION=18-alpine3.19
+# version of node docker we will use. 
+# Pegged at node v18.x as bug in docker builds on armv7/armv6 when using later versions
+#ARG NODE_VERSION=18-alpine3.20
+ARG NODE_VERSION=22-alpine3.20
 
 # version of our project. pass in via build, formatted as vx.x.x
 ARG NEST_ACCFACTORY_VERSION
@@ -109,7 +111,8 @@ RUN apk update \
     && apk upgrade \
     && apk add tzdata \
     && apk add fdk-aac \
-    && apk add speex
+    && apk add speex \
+    && apk add nano
 
 # working directory inside the container
 WORKDIR /opt/Nest_accfactory

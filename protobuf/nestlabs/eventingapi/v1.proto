@@ -3,9 +3,9 @@ syntax = "proto3";
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
-import "nest/messages.proto";
-import "weave/common.proto";
-import "wdl-event-importance.proto";
+import "../../nest/messages.proto";
+import "../../weave/common.proto";
+import "../../wdl-event-importance.proto";
 
 package nestlabs.eventingapi.v1;
 
