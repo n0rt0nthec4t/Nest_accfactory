@@ -15,7 +15,7 @@
 //
 // HomeKitDevice.HOMEKITHISTORY - HomeKit History module
 //
-// Code version 23/7/2024
+// Code version 29/7/2024
 // Mark Hulskamp
 
 "use strict";
@@ -53,7 +53,7 @@ class HomeKitDevice {
             typeof mDNSAdvertiseName != "string" || mDNSAdvertiseName == "" ||
             this.HomeKitAccessory instanceof require("hap-nodejs").Accessory == true ||
             this.deviceData.hasOwnProperty("uuid") == false || typeof this.deviceData.uuid != "string" || this.deviceData.uuid == "" || 
-            this.deviceData.hasOwnProperty("mac_address") == false || typeof this.deviceData.mac_address != "string" || this.#validMACAddress(this.deviceData.mac_address) == false || 
+            this.deviceData.hasOwnProperty("mac_address") == false || typeof this.deviceData.mac_address != "string" || validMACAddress(this.deviceData.mac_address) == false || 
             this.deviceData.hasOwnProperty("serial_number") == false || typeof this.deviceData.serial_number != "string" || this.deviceData.serial_number == "" ||
             this.deviceData.hasOwnProperty("software_version") == false || typeof this.deviceData.software_version != "string" || this.deviceData.software_version == "" ||
             this.deviceData.hasOwnProperty("description") == false || typeof this.deviceData.description != "string" && this.deviceData.description == "" ||
@@ -105,12 +105,12 @@ class HomeKitDevice {
         });
 
         if (fileAccessIssues.length == 0) {
-            // Publish accessory on local network and push onto export array for HAP-NodeJS "accessory factory"
+            // Publish accessory on local network
             this.HomeKitAccessory.publish({username: this.HomeKitAccessory.username, pincode: this.HomeKitAccessory.pincode, category: this.HomeKitAccessory.category, advertiser: this.mDNSAdvertiser});
             this.#outputLogging("Setup %s %s as '%s'", this.deviceData.manufacturer, this.deviceData.model, this.deviceData.description);
             this.#outputLogging("  += Advertising as '%s'", this.HomeKitAccessory.displayName);
-            this.#outputLogging("  += Pairing code is '%s'", this.HomeKitPairingCode);
-            this.HomeKitHistory.EveHome && this.#outputLogging("  += EveHome support as '%s'", this.HomeKitHistory.EveHome.evetype);
+            this.#outputLogging("  += Pairing code is '%s'", this.HomeKitAccessory.pincode);
+            this.HomeKitHistory && this.HomeKitHistory.EveHome && this.#outputLogging("  += EveHome support as '%s'", this.HomeKitHistory.EveHome.evetype);
             if (typeof postSetupDetails == "object") {
                 postSetupDetails.forEach((output) => {
                     this.#outputLogging("  += %s", output);
@@ -296,11 +296,19 @@ class HomeKitDevice {
         var timeStamp = String(new Date().getFullYear()).padStart(4, "0") + "-" + String(new Date().getMonth() + 1).padStart(2, "0") + "-" + String(new Date().getDate()).padStart(2, "0") + " " + String(new Date().getHours()).padStart(2, "0") + ":" + String(new Date().getMinutes()).padStart(2, "0") + ":" + String(new Date().getSeconds()).padStart(2, "0");
         console.log(timeStamp + " [" + this.HomeKitManufacturerName + "] " + util.format(...outputMessage)); 
     }
+}
 
-    #validMACAddress(mac_address) {
-        var regex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
-        return regex.test(mac_address); // true or false
-    }
+// Helper functions
+function validateHomeKitName(nameToMakeValid) {
+    // Strip invalid characters to meet HomeKit naming requirements
+    // Ensure only letters or numbers are at the beginning AND/OR end of string
+    // Matches against uni-code characters
+    return nameToMakeValid.replace(/[^\p{L}\p{N} '.,-]/gu, "").replace(/^[^\p{L}\p{N}]*/gu, "").replace(/[^\p{L}\p{N}]+$/gu, "");
+}
+
+function validMACAddress(mac_address) {
+    var regex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
+    return regex.test(mac_address); // true or false
 }
 
 // Export defines for this module
@@ -310,5 +318,7 @@ HomeKitDevice.SET = "HomeKitDevice.set";                // Device set property m
 HomeKitDevice.GET = "HomeKitDevice.get";                // Device get property message
 HomeKitDevice.UNPUBLISH = "HomeKitDevice.unpublish";    // Device unpublish message
 HomeKitDevice.HOMEKITHISTORY = undefined;               // HomeKit History module
+HomeKitDevice.validateHomeKitName = validateHomeKitName;
+HomeKitDevice.validMACAddress = validMACAddress;
 module.exports = HomeKitDevice;
 

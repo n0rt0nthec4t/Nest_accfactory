@@ -112,16 +112,16 @@ class NestThermostat extends HomeKitDevice {
             this.fanService = this.HomeKitAccessory.addService(HAP.Service.Fanv2, "Fan", 1);
             //this.fanService.addCharacteristic(HAP.Characteristic.RotationSpeed);
             //this.fanService.getCharacteristic(HAP.Characteristic.RotationSpeed).setProps({minStep: (100 / this.deviceData.fan_max_speed), minValue: 0, maxValue: 100});
-            this.fanService.getCharacteristic(HAP.Characteristic.Active).on("set", (value, callback) => {this.setFan(value, callback); });
-            this.fanService.getCharacteristic(HAP.Characteristic.Active).on("get", (callback) => {callback(undefined, (this.deviceData.fan_state == true ? HAP.Characteristic.Active.ACTIVE : HAP.Characteristic.Active.INACTIVE)); });
+            this.fanService.getCharacteristic(HAP.Characteristic.Active).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {this.setFan(value, callback); });
+            this.fanService.getCharacteristic(HAP.Characteristic.Active).on(HAP.CharacteristicEventTypes.GET, (callback) => {callback(undefined, (this.deviceData.fan_state == true ? HAP.Characteristic.Active.ACTIVE : HAP.Characteristic.Active.INACTIVE)); });
         }
 
         // Add dehumifider service if the Nest Thermostat has dehumidifer support
         if (this.deviceData.has_dehumidifier == true) {
             this.dehumidifierService = this.HomeKitAccessory.addService(HAP.Service.HumidifierDehumidifier, "Dehumidifier", 1);
             this.dehumidifierService.getCharacteristic(HAP.Characteristic.TargetHumidifierDehumidifierState).setProps({validValues: [HAP.Characteristic.TargetHumidifierDehumidifierState.DEHUMIDIFIER]});
-            this.dehumidifierService.getCharacteristic(HAP.Characteristic.Active).on("set", (value, callback) => {this.setDehumidifier(value, callback); });
-            this.dehumidifierService.getCharacteristic(HAP.Characteristic.Active).on("get", (callback) => {callback(undefined, (this.deviceData.dehumidifier_state == true ? HAP.Characteristic.Active.ACTIVE : HAP.Characteristic.Active.INACTIVE) ); });
+            this.dehumidifierService.getCharacteristic(HAP.Characteristic.Active).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {this.setDehumidifier(value, callback); });
+            this.dehumidifierService.getCharacteristic(HAP.Characteristic.Active).on(HAP.CharacteristicEventTypes.GET, (callback) => {callback(undefined, (this.deviceData.dehumidifier_state == true ? HAP.Characteristic.Active.ACTIVE : HAP.Characteristic.Active.INACTIVE) ); });
         }
 
         // Set default ranges - based on celsuis ranges to which the Nest Thermostat operates
@@ -131,19 +131,19 @@ class NestThermostat extends HomeKitDevice {
         this.thermostatService.getCharacteristic(HAP.Characteristic.HeatingThresholdTemperature).setProps({minStep: 0.5, minValue: MIN_TEMPERATURE, maxValue: MAX_TEMPERATURE});
 
         // Setup callbacks for characteristics
-        this.thermostatService.getCharacteristic(HAP.Characteristic.TemperatureDisplayUnits).on("set", (value, callback) => {this.setDisplayUnit(value, callback); });
-        this.thermostatService.getCharacteristic(HAP.Characteristic.TargetHeatingCoolingState).on("set", (value, callback) => {this.setMode(value, callback); });
-        this.thermostatService.getCharacteristic(HAP.Characteristic.TargetTemperature).on("set", (value, callback) => {this.setTemperature(HAP.Characteristic.TargetTemperature, value, callback)});
-        this.thermostatService.getCharacteristic(HAP.Characteristic.CoolingThresholdTemperature).on("set", (value, callback) => {this.setTemperature(HAP.Characteristic.CoolingThresholdTemperature, value, callback)});
-        this.thermostatService.getCharacteristic(HAP.Characteristic.HeatingThresholdTemperature).on("set", (value, callback) => {this.setTemperature(HAP.Characteristic.HeatingThresholdTemperature, value, callback)});
-        this.thermostatService.getCharacteristic(HAP.Characteristic.LockPhysicalControls).on("set", (value, callback) => {this.setChildlock("", value, callback)});
+        this.thermostatService.getCharacteristic(HAP.Characteristic.TemperatureDisplayUnits).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {this.setDisplayUnit(value, callback); });
+        this.thermostatService.getCharacteristic(HAP.Characteristic.TargetHeatingCoolingState).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {this.setMode(value, callback); });
+        this.thermostatService.getCharacteristic(HAP.Characteristic.TargetTemperature).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {this.setTemperature(HAP.Characteristic.TargetTemperature, value, callback)});
+        this.thermostatService.getCharacteristic(HAP.Characteristic.CoolingThresholdTemperature).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {this.setTemperature(HAP.Characteristic.CoolingThresholdTemperature, value, callback)});
+        this.thermostatService.getCharacteristic(HAP.Characteristic.HeatingThresholdTemperature).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {this.setTemperature(HAP.Characteristic.HeatingThresholdTemperature, value, callback)});
+        this.thermostatService.getCharacteristic(HAP.Characteristic.LockPhysicalControls).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {this.setChildlock("", value, callback)});
 
-        this.thermostatService.getCharacteristic(HAP.Characteristic.TemperatureDisplayUnits).on("get", (callback) => {callback(undefined, this.deviceData.temperature_scale == "C" ? HAP.Characteristic.TemperatureDisplayUnits.CELSIUS : HAP.Characteristic.TemperatureDisplayUnits.FAHRENHEIT); });
-        this.thermostatService.getCharacteristic(HAP.Characteristic.TargetTemperature).on("get", (callback) => {this.getTemperature(HAP.Characteristic.TargetTemperature, callback); });
-        this.thermostatService.getCharacteristic(HAP.Characteristic.CoolingThresholdTemperature).on("get", (callback) => {this.getTemperature(HAP.Characteristic.CoolingThresholdTemperature, callback); });
-        this.thermostatService.getCharacteristic(HAP.Characteristic.HeatingThresholdTemperature).on("get", (callback) => {this.getTemperature(HAP.Characteristic.HeatingThresholdTemperature, callback); });
-        this.thermostatService.getCharacteristic(HAP.Characteristic.TargetHeatingCoolingState).on("get", (callback) => {callback(undefined, this.getMode(null)); });
-        this.thermostatService.getCharacteristic(HAP.Characteristic.LockPhysicalControls).on("get", (callback) => {callback(undefined, this.deviceData.temperature_lock == true ? HAP.Characteristic.LockPhysicalControls.CONTROL_LOCK_ENABLED : HAP.Characteristic.LockPhysicalControls.CONTROL_LOCK_DISABLED); });
+        this.thermostatService.getCharacteristic(HAP.Characteristic.TemperatureDisplayUnits).on(HAP.CharacteristicEventTypes.GET, (callback) => {callback(undefined, this.deviceData.temperature_scale == "C" ? HAP.Characteristic.TemperatureDisplayUnits.CELSIUS : HAP.Characteristic.TemperatureDisplayUnits.FAHRENHEIT); });
+        this.thermostatService.getCharacteristic(HAP.Characteristic.TargetTemperature).on(HAP.CharacteristicEventTypes.GET, (callback) => {this.getTemperature(HAP.Characteristic.TargetTemperature, callback); });
+        this.thermostatService.getCharacteristic(HAP.Characteristic.CoolingThresholdTemperature).on(HAP.CharacteristicEventTypes.GET, (callback) => {this.getTemperature(HAP.Characteristic.CoolingThresholdTemperature, callback); });
+        this.thermostatService.getCharacteristic(HAP.Characteristic.HeatingThresholdTemperature).on(HAP.CharacteristicEventTypes.GET, (callback) => {this.getTemperature(HAP.Characteristic.HeatingThresholdTemperature, callback); });
+        this.thermostatService.getCharacteristic(HAP.Characteristic.TargetHeatingCoolingState).on(HAP.CharacteristicEventTypes.GET, (callback) => {callback(undefined, this.getMode(null)); });
+        this.thermostatService.getCharacteristic(HAP.Characteristic.LockPhysicalControls).on(HAP.CharacteristicEventTypes.GET, (callback) => {callback(undefined, this.deviceData.temperature_lock == true ? HAP.Characteristic.LockPhysicalControls.CONTROL_LOCK_ENABLED : HAP.Characteristic.LockPhysicalControls.CONTROL_LOCK_DISABLED); });
 
         this.thermostatService.setPrimaryService();
 
@@ -374,8 +374,8 @@ class NestThermostat extends HomeKitDevice {
                 this.fanService = this.HomeKitAccessory.addService(HAP.Service.Fanv2, "Fan", 1);
                 //this.fanService.addCharacteristic(HAP.Characteristic.RotationSpeed);
                 //this.fanService.getCharacteristic(HAP.Characteristic.RotationSpeed).setProps({minStep: (100 / this.deviceData.fan_max_speed), minValue: 0, maxValue: 100});
-                this.fanService.getCharacteristic(HAP.Characteristic.Active).on("set", (value, callback) => {this.setFan(value, callback); });
-                this.fanService.getCharacteristic(HAP.Characteristic.Active).on("get", (callback) => {callback(undefined, (this.deviceData.fan_state == true ? HAP.Characteristic.Active.ACTIVE : HAP.Characteristic.Active.INACTIVE)); });
+                this.fanService.getCharacteristic(HAP.Characteristic.Active).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {this.setFan(value, callback); });
+                this.fanService.getCharacteristic(HAP.Characteristic.Active).on(HAP.CharacteristicEventTypes.GET, (callback) => {callback(undefined, (this.deviceData.fan_state == true ? HAP.Characteristic.Active.ACTIVE : HAP.Characteristic.Active.INACTIVE)); });
             }
             if (updatedDeviceData.has_fan == false && this.deviceData.has_fan == true && this.fanService != null) {
                 // Fan has been removed
@@ -391,8 +391,8 @@ class NestThermostat extends HomeKitDevice {
                 // Dehumidifier has been added
                 this.dehumidifierService = this.HomeKitAccessory.addService(HAP.Service.HumidifierDehumidifier, "Dehumidifier", 1);
                 this.dehumidifierService.getCharacteristic(HAP.Characteristic.TargetHumidifierDehumidifierState).setProps({validValues: [HAP.Characteristic.TargetHumidifierDehumidifierState.DEHUMIDIFIER]});
-                this.dehumidifierService.getCharacteristic(HAP.Characteristic.Active).on("set", (value, callback) => {this.setDehumidifier(value, callback); });
-                this.dehumidifierService.getCharacteristic(HAP.Characteristic.Active).on("get", (callback) => {callback(undefined, (this.deviceData.dehumidifier_state == true ? HAP.Characteristic.Active.ACTIVE : HAP.Characteristic.Active.INACTIVE) ); });
+                this.dehumidifierService.getCharacteristic(HAP.Characteristic.Active).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {this.setDehumidifier(value, callback); });
+                this.dehumidifierService.getCharacteristic(HAP.Characteristic.Active).on(HAP.CharacteristicEventTypes.GET, (callback) => {callback(undefined, (this.deviceData.dehumidifier_state == true ? HAP.Characteristic.Active.ACTIVE : HAP.Characteristic.Active.INACTIVE) ); });
             }
             if (updatedDeviceData.has_dehumidifier == false && this.deviceData.has_dehumidifier == true && this.dehumidifierService != null) {
                 // Dehumidifer has been removed
@@ -544,7 +544,7 @@ class NestThermostat extends HomeKitDevice {
     }
 
     #EveHomeGetcommand(EveHomeGetData) {
-        // Pass back extra data for Eve Thermo "get" process command
+        // Pass back extra data for Eve Thermo HAP.CharacteristicEventTypes.GET process command
         // Data will already be an object, our only job is to add/modify to it
         //EveHomeGetData.enableschedule = optionalParams.hasOwnProperty("EveThermo_enableschedule") == true ? optionalParams.EveThermo_enableschedule : false; // Schedules on/off
         EveHomeGetData.attached = (this.deviceData.online == true && this.deviceData.removed_from_base == false);
@@ -771,7 +771,7 @@ class NestProtect extends HomeKitDevice {
     }
 
     #EveHomeGetcommand(EveHomeGetData) {
-        // Pass back extra data for Eve Smoke "get" process command
+        // Pass back extra data for Eve Smoke HAP.CharacteristicEventTypes.GET process command
         // Data will already be an object, our only job is to add/modify to it
         EveHomeGetData.lastalarmtest = this.deviceData.latest_alarm_test;
         EveHomeGetData.alarmtest = this.deviceData.self_test_in_progress;
@@ -989,7 +989,7 @@ class NestCameraDoorbell extends HomeKitDevice {
             this.chimeService = this.HomeKitAccessory.addService(HAP.Service.Switch, "Indoor Chime", 1);
 
             // Setup set callback for this switch service
-            this.chimeService.getCharacteristic(HAP.Characteristic.On).on("set", (value, callback) => {
+            this.chimeService.getCharacteristic(HAP.Characteristic.On).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                 if (value != this.deviceData.indoor_chime_enabled) {
                     // only change indoor chime status value if different than on-device
                     outputLogging(ACCESSORYNAME, true, "Indoor chime on '%s' was turned", this.deviceData.description, (value == true ? "on" : "off"));
@@ -998,7 +998,7 @@ class NestCameraDoorbell extends HomeKitDevice {
                 callback();
             });
 
-            this.chimeService.getCharacteristic(HAP.Characteristic.On).on("get", (callback) => {
+            this.chimeService.getCharacteristic(HAP.Characteristic.On).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                 callback(undefined, this.deviceData.indoor_chime_enabled == true ? true : false);
             });
         }
@@ -1011,7 +1011,7 @@ class NestCameraDoorbell extends HomeKitDevice {
             this.controller.recordingManagement.operatingModeService.addOptionalCharacteristic(HAP.Characteristic.CameraOperatingModeIndicator);
 
             // Setup set callbacks for characteristics
-            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.CameraOperatingModeIndicator).on("set", (value, callback) => {
+            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.CameraOperatingModeIndicator).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                 // 0 = auto, 1 = low, 2 = high
                 // We'll use auto mode for led on and low for led off
                 if ((this.deviceData.statusled_brightness == 1 && value == HAP.Characteristic.CameraOperatingModeIndicator.ENABLE) ||
@@ -1023,14 +1023,14 @@ class NestCameraDoorbell extends HomeKitDevice {
                 callback();
             });
 
-            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.CameraOperatingModeIndicator).on("get", (callback) => { 
+            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.CameraOperatingModeIndicator).on(HAP.CharacteristicEventTypes.GET, (callback) => { 
                 callback(undefined, this.deviceData.statusled_brightness != 1 ? HAP.Characteristic.CameraOperatingModeIndicator.ENABLE : HAP.Characteristic.CameraOperatingModeIndicator.DISABLE);
             });
         }
         if (this.deviceData.HKSV == true && typeof this.controller.recordingManagement.recordingManagementService == "object" && this.deviceData.has_irled == true) {
             this.controller.recordingManagement.operatingModeService.addOptionalCharacteristic(HAP.Characteristic.NightVision);
 
-            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.NightVision).on("set", (value, callback) => {
+            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.NightVision).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                 if ((this.deviceData.irled_enabled == false && value == true) ||
                     (this.deviceData.irled_enabled == true && value == false)) {
                     // only change IRLed status value if different than on-device
@@ -1040,13 +1040,13 @@ class NestCameraDoorbell extends HomeKitDevice {
                 callback();
             });
 
-            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.NightVision).on("get", (callback) => {
+            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.NightVision).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                 callback(undefined, this.deviceData.irled_enabled);
             });
         }
 
         if (this.deviceData.HKSV == true && typeof this.controller.recordingManagement.recordingManagementService == "object" && this.deviceData.has_microphone == true) {
-            this.controller.recordingManagement.recordingManagementService.getCharacteristic(HAP.Characteristic.RecordingAudioActive).on("set", (value, callback) => {
+            this.controller.recordingManagement.recordingManagementService.getCharacteristic(HAP.Characteristic.RecordingAudioActive).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                 if ((this.deviceData.audio_enabled == false && value == HAP.Characteristic.RecordingAudioActive.ENABLE) ||
                     (this.deviceData.audio_enabled == true && value == HAP.Characteristic.RecordingAudioActive.DISABLE)) {
                     // only change audio recording value if different than on-device
@@ -1056,13 +1056,13 @@ class NestCameraDoorbell extends HomeKitDevice {
                 callback();
             });
 
-            this.controller.recordingManagement.recordingManagementService.getCharacteristic(HAP.Characteristic.RecordingAudioActive).on("get", (callback) => {
+            this.controller.recordingManagement.recordingManagementService.getCharacteristic(HAP.Characteristic.RecordingAudioActive).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                 callback(undefined, this.deviceData.audio_enabled == true ? HAP.Characteristic.RecordingAudioActive.ENABLE : HAP.Characteristic.RecordingAudioActive.DISABLE);
             });
         }
 
         if (this.deviceData.HKSV == true && typeof this.controller.recordingManagement.recordingManagementService == "object") {
-            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.HomeKitCameraActive).on("set", (value, callback) => {
+            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.HomeKitCameraActive).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                 if (value != this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.HomeKitCameraActive).value) {
                     // Make sure only updating status if HomeKit value *actually changes*
                     if ((this.deviceData.streaming_enabled == false && value == HAP.Characteristic.HomeKitCameraActive.ON) ||
@@ -1079,7 +1079,7 @@ class NestCameraDoorbell extends HomeKitDevice {
                 callback();
             });
 
-            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.HomeKitCameraActive).on("get", (callback) => {
+            this.controller.recordingManagement.operatingModeService.getCharacteristic(HAP.Characteristic.HomeKitCameraActive).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                 callback(undefined, this.deviceData.streaming_enabled == true ? HAP.Characteristic.HomeKitCameraActive.ON : HAP.Characteristic.HomeKitCameraActive.OFF);
             });
         }
@@ -1995,15 +1995,15 @@ class NestSystem {
                 temp.excluded = (config.deviceOptions.Global.Exclude == true && typeof config.deviceOptions[temp.serial_number]?.Exclude == "undefined" || config.deviceOptions[temp.serial_number]?.Exclude == true);    // Mark device as excluded or not
                 temp.device_type = NestDeviceType.THERMOSTAT;  // Nest Thermostat
                 temp.uuid = object_key; // Internal structure ID
-                temp.manufacturer = ACCESSORYNAME;
+                temp.manufacturer = (data.hasOwnProperty("manufacturer") == true ? data.manufacturer : ACCESSORYNAME);
                 temp.software_version = (data.hasOwnProperty("software_version") == true ? data.software_version.replace(/-/g, ".") : "0.0.0");
                 temp.target_temperature_high = this.#adjustTemperature(data.target_temperature_high, "C", "C", true);
                 temp.target_temperature_low = this.#adjustTemperature(data.target_temperature_low, "C", "C", true);
                 temp.target_temperature = this.#adjustTemperature(data.target_temperature, "C", "C", true);
                 temp.backplate_temperature = this.#adjustTemperature(data.backplate_temperature, "C", "C", true);
                 temp.current_temperature = this.#adjustTemperature(data.current_temperature, "C", "C", true);
-                var description = data.hasOwnProperty("description") == true ? this.#validateHomeKitName(data.description) : "";
-                var location = data.hasOwnProperty("location") == true ? this.#validateHomeKitName(data.location) : "";
+                var description = data.hasOwnProperty("description") == true ? HomeKitDevice.validateHomeKitName(data.description) : "";
+                var location = data.hasOwnProperty("location") == true ? HomeKitDevice.validateHomeKitName(data.location) : "";
                 if (description == "") {
                     description = location;
                     location = ""
@@ -2213,7 +2213,7 @@ class NestSystem {
                     RESTTypeData.vacation_mode = false;
                     if (typeof this.rawData["structure." + this.rawData["link." + value.value.serial_number].value.structure.split(".")[1]]?.value?.vacation_mode == "boolean") RESTTypeData.vacation_mode = this.rawData["structure." + this.rawData["link." + value.value.serial_number].value.structure.split(".")[1]].value.vacation_mode;  // vacation mode
                     if (this.rawData["structure." + this.rawData["link." + value.value.serial_number].value.structure.split(".")[1]]?.value?.structure_mode?.structureMode == "STRUCTURE_MODE_VACATION") RESTTypeData.vacation_mode = true;
-                    RESTTypeData.description = this.rawData["shared." + value.value.serial_number].value.hasOwnProperty("name") == true ? this.#validateHomeKitName(this.rawData["shared." + value.value.serial_number].value.name) : "";
+                    RESTTypeData.description = this.rawData["shared." + value.value.serial_number].value.hasOwnProperty("name") == true ? HomeKitDevice.validateHomeKitName(this.rawData["shared." + value.value.serial_number].value.name) : "";
                     RESTTypeData.location = get_location_name(this.rawData["link." + value.value.serial_number].value.structure.split(".")[1], value.value.where_id);
 
                     // Work out current mode. ie: off, cool, heat, range and get temperature low/high and target
@@ -2354,12 +2354,12 @@ class NestSystem {
                 temp.excluded = (config.deviceOptions.Global.Exclude == true && typeof config.deviceOptions[temp.serial_number]?.Exclude == "undefined" || config.deviceOptions[temp.serial_number]?.Exclude == true);    // Mark device as excluded or not
                 temp.device_type = NestDeviceType.TEMPSENSOR;  // Nest Temperature sensor
                 temp.uuid = object_key; // Internal structure ID
-                temp.manufacturer = ACCESSORYNAME;
+                temp.manufacturer = (data.hasOwnProperty("manufacturer") == true ? data.manufacturer : ACCESSORYNAME);
                 temp.software_version = "1.0.0";
                 temp.model = "Temperature Sensor";
                 temp.current_temperature = this.#adjustTemperature(data.current_temperature, "C", "C", true);
-                var description = data.hasOwnProperty("description") == true ? this.#validateHomeKitName(data.description) : "";
-                var location = data.hasOwnProperty("location") == true ? this.#validateHomeKitName(data.location) : "";
+                var description = data.hasOwnProperty("description") == true ? HomeKitDevice.validateHomeKitName(data.description) : "";
+                var location = data.hasOwnProperty("location") == true ? HomeKitDevice.validateHomeKitName(data.location) : "";
                 if (description == "") {
                     description = location;
                     location = ""
@@ -2428,15 +2428,15 @@ class NestSystem {
                 temp.excluded = (config.deviceOptions.Global.Exclude == true && typeof config.deviceOptions[temp.serial_number]?.Exclude == "undefined" || config.deviceOptions[temp.serial_number]?.Exclude == true);    // Mark device as excluded or not
                 temp.device_type = NestDeviceType.SMOKESENSOR;  // Nest Protect
                 temp.uuid = object_key; // Internal structure ID
-                temp.manufacturer = ACCESSORYNAME;
+                temp.manufacturer = (data.hasOwnProperty("manufacturer") == true ? data.manufacturer : ACCESSORYNAME);
                 temp.software_version = (data.hasOwnProperty("software_version") == true ? data.software_version.replace(/-/g, ".") : "0.0.0");
                 temp.model = "Protect";
                 if (temp.wired_or_battery == 0) temp.model = temp.model + " (wired";    // Mains powered
                 if (temp.wired_or_battery == 1) temp.model = temp.model + " (battery";    // Battery powered
                 if (temp.serial_number.substring(0,2) == "06") temp.model = temp.model + ", 2nd Gen)";  // Nest Protect 2nd Gen
                 if (temp.serial_number.substring(0,2) == "05") temp.model = temp.model + ", 1st Gen)";  // Nest Protect 1st Gen
-                var description = data.hasOwnProperty("description") == true ? this.#validateHomeKitName(data.description) : "";
-                var location = data.hasOwnProperty("location") == true ? this.#validateHomeKitName(data.location) : "";
+                var description = data.hasOwnProperty("description") == true ? HomeKitDevice.validateHomeKitName(data.description) : "";
+                var location = data.hasOwnProperty("location") == true ? HomeKitDevice.validateHomeKitName(data.location) : "";
                 if (description == "") {
                     description = location;
                     location = ""
@@ -2536,10 +2536,10 @@ class NestSystem {
                 temp.excluded = (config.deviceOptions.Global.Exclude == true && typeof config.deviceOptions[temp.serial_number]?.Exclude == "undefined" || config.deviceOptions[temp.serial_number]?.Exclude == true);    // Mark device as excluded or not
                 temp.device_type = (data.model.toUpperCase().includes("DOORBELL") == true ? NestDeviceType.DOORBELL : NestDeviceType.CAMERA);   // Camera or Doorbell
                 temp.uuid = object_key; // Internal structure ID
-                temp.manufacturer = ACCESSORYNAME;
+                temp.manufacturer = (data.hasOwnProperty("manufacturer") == true ? data.manufacturer : ACCESSORYNAME);
                 temp.software_version = (data.hasOwnProperty("software_version") == true ? data.software_version.replace(/-/g, ".") : "0.0.0");
-                var description = data.hasOwnProperty("description") == true ? this.#validateHomeKitName(data.description) : "";
-                var location = data.hasOwnProperty("location") == true ? this.#validateHomeKitName(data.location) : "";
+                var description = data.hasOwnProperty("description") == true ? HomeKitDevice.validateHomeKitName(data.description) : "";
+                var location = data.hasOwnProperty("location") == true ? HomeKitDevice.validateHomeKitName(data.location) : "";
                 if (description == "") {
                     description = location;
                     location = ""
@@ -2557,7 +2557,7 @@ class NestSystem {
             return processed;
         }
 
-        const PROTOBUF_CAMERA_DOORBELL_RESOURCES = ["google.resource.NeonQuartzResource", "google.resource.GreenQuartzResource", "google.resource.SpencerResource", "google.resource.VenusResource", "nest.resource.NestCamIndoorResource", "nest.resource.NestCamIQResource", "nest.resource.NestCamIQOutdoorResource", "nest.resource.NestHelloResource", "google.resource.AzizResource"];
+        const PROTOBUF_CAMERA_DOORBELL_RESOURCES = ["google.resource.NeonQuartzResource", "google.resource.GreenQuartzResource", "google.resource.SpencerResource", "google.resource.VenusResource", "nest.resource.NestCamIndoorResource", "nest.resource.NestCamIQResource", "nest.resource.NestCamIQOutdoorResource", "nest.resource.NestHelloResource", "google.resource.AzizResource", "google.resource.GoogleNewmanResource"];
         Object.entries(this.rawData).filter(([key, value]) => (key.startsWith("quartz.") == true || (key.startsWith("DEVICE_") == true && PROTOBUF_CAMERA_DOORBELL_RESOURCES.includes(value.value?.device_info?.typeName) == true)) && (deviceUUID == undefined || deviceUUID == key)).forEach(([object_key, value]) => {
             try {
                 if (value.source == NestDataSource.PROTOBUF) {
@@ -2579,19 +2579,22 @@ class NestSystem {
                         RESTTypeData.model = "Doorbell (wired, 2nd Gen)";
                     }
                     if (value.value.device_info.typeName == "nest.resource.NestCamIndoorResource") {
-                        RESTTypeData.model = "Cam Indoor (1st Gen";
+                        RESTTypeData.model = "Cam Indoor (1st Gen)";
                     }
                     if (value.value.device_info.typeName == "nest.resource.NestCamIQResource") {
                         RESTTypeData.model = "Cam IQ";
                     }
                     if (value.value.device_info.typeName == "nest.resource.NestCamIQOutdoorResource") {
-                        RESTTypeData.model = "Cam Outdoor (1st Gen";
+                        RESTTypeData.model = "Cam Outdoor (1st Gen)";
                     }
                     if (value.value.device_info.typeName == "nest.resource.NestHelloResource") {
-                        RESTTypeData.model = "Doorbell (wired)";
+                        RESTTypeData.model = "Doorbell (wired, 1st Gen)";
                     }
                     if (value.value.device_info.typeName == "google.resource.AzizResource") {
                         RESTTypeData.model = "Cam with Floodlight (wired)";
+                    }
+                    if (value.value.device_info.typeName == "google.resource.GoogleNewmanResource") {
+                        RESTTypeData.model = "Hub Max";
                     }
                     RESTTypeData.online = (value.value?.liveness?.status == "LIVENESS_DEVICE_STATUS_ONLINE");
                     RESTTypeData.description = (typeof value.value?.label?.label == "string" ? value.value.label.label : "");
@@ -2600,6 +2603,7 @@ class NestSystem {
                     RESTTypeData.has_indoor_chime = (value.value.hasOwnProperty("doorbell_indoor_chime_settings") == true);
                     RESTTypeData.indoor_chime_enabled = (value.value?.doorbell_indoor_chime_settings?.chimeEnabled == true);
                     RESTTypeData.streaming_enabled = (value.value?.recording_toggle?.currentCameraState == "CAMERA_ON");
+                    RESTTypeData.direct_nexustalk_host = (value.value?.streaming_protocol?.directHost?.hasOwnProperty("value") == true ? value.value.streaming_protocol.directHost.value : "");
                     //RESTTypeData.has_irled = 
                     //RESTTypeData.irled_enabled = 
                     //RESTTypeData.has_statusled = 
@@ -2609,11 +2613,12 @@ class NestSystem {
                     RESTTypeData.has_motion_detection = (value.value?.observation_trigger_capabilities?.videoEventTypes?.motion?.value == true);
                     RESTTypeData.activity_zones = [];
                     value.value.activity_zone_settings.activityZones.forEach((zone) => {
-                        RESTTypeData.activity_zones.push({"id" : (zone.zoneProperties.hasOwnProperty("zoneId") == true ? zone.zoneProperties.zoneId : zone.zoneProperties.internalIndex), "name" : this.#validateHomeKitName((zone.zoneProperties.hasOwnProperty("name") == true ? zone.zoneProperties.name : "")), "hidden" : false, "uri" : ""});
+                        RESTTypeData.activity_zones.push({"id" : (zone.zoneProperties.hasOwnProperty("zoneId") == true ? zone.zoneProperties.zoneId : zone.zoneProperties.internalIndex), "name" : HomeKitDevice.validateHomeKitName((zone.zoneProperties.hasOwnProperty("name") == true ? zone.zoneProperties.name : "")), "hidden" : false, "uri" : ""});
                     });
                     RESTTypeData.alerts = (typeof value.value?.alerts == "object" ? value.value.alerts : []);
-                    RESTTypeData.quiet_time_enabled = (value.value?.quiet_time_settings?.quietTimeEnds?.hasOwnProperty("seconds") == true  && parseInt(value.value.quiet_time_settings.quietTimeEnds.seconds) != 0 && Math.floor(Date.now() / 1000) < parseInt(value.value.quiet_time_settings.quietTimeEnds.seconds));
+                    RESTTypeData.quiet_time_enabled = (value.value?.quiet_time_settings?.quietTimeEnds?.hasOwnProperty("seconds") == true && parseInt(value.value.quiet_time_settings.quietTimeEnds.seconds) != 0 && Math.floor(Date.now() / 1000) < parseInt(value.value.quiet_time_settings.quietTimeEnds.seconds));
                     RESTTypeData.camera_type = value.value.device_identity.vendorProductId;
+                    //var tempDevice = process_camera_doorbell_data(object_key, RESTTypeData);
                 }
 
 
@@ -2682,8 +2687,8 @@ class NestSystem {
                 temp.excluded = (config.deviceOptions.Global.Weather == false || config.deviceOptions.Global.Exclude == true && config.deviceOptions[temp.serial_number]?.Exclude == undefined || config.deviceOptions[temp.serial_number]?.Exclude == true);    // Mark device as excluded or not
                 temp.device_type = NestDeviceType.WEATHER;
                 temp.uuid = object_key; // Internal structure ID
-                temp.manufacturer = ACCESSORYNAME;
-                temp.description = this.#validateHomeKitName(data.description);
+                temp.manufacturer = (data.hasOwnProperty("manufacturer") == true ? data.manufacturer : ACCESSORYNAME);
+                temp.description = HomeKitDevice.validateHomeKitName(data.description);
                 temp.software_version = "1.0.1";
                 temp.model = "Weather";
                 temp.current_temperature = data.weather.current_temperature;
@@ -2849,7 +2854,7 @@ class NestSystem {
                         var zones = [];
                         response.data.forEach((zone) => {
                             if (zone.type.toUpperCase() == "ACTIVITY" || zone.type.toUpperCase() == "REGION") {
-                                zones.push({"id" : (zone.id == 0 ? 1 : zone.id), "name" : this.#validateHomeKitName(zone.label), "hidden" : (zone.hidden == true), "uri" : zone.nexusapi_image_uri});
+                                zones.push({"id" : (zone.id == 0 ? 1 : zone.id), "name" : HomeKitDevice.validateHomeKitName(zone.label), "hidden" : (zone.hidden == true), "uri" : zone.nexusapi_image_uri});
                             }
                         });
 
@@ -3166,7 +3171,7 @@ class NestSystem {
                                         var zones = [];
                                         response.data.forEach((zone) => {
                                             if (zone.type.toUpperCase() == "ACTIVITY" || zone.type.toUpperCase() == "REGION") {
-                                                zones.push({"id" : (zone.id == 0 ? 1 : zone.id), "name" : this.#validateHomeKitName(zone.label), "hidden" : (zone.hidden == true), "uri" : zone.nexusapi_image_uri});
+                                                zones.push({"id" : (zone.id == 0 ? 1 : zone.id), "name" : HomeKitDevice.validateHomeKitName(zone.label), "hidden" : (zone.hidden == true), "uri" : zone.nexusapi_image_uri});
                                             }
                                         });
             
@@ -3338,7 +3343,7 @@ class NestSystem {
                 protobufElement.property.type_url = "";
                 protobufElement.property.value = {};
 
-                // Process request "set" data
+                // Process request HAP.CharacteristicEventTypes.SET data
                 if ((key == "hvac_mode" && typeof value == "string" && (value.toUpperCase() == "OFF" || value.toUpperCase() == "COOL" || value.toUpperCase() == "HEAT" || value.toUpperCase() == "RANGE")) ||
                     (key == "target_temperature" && this.rawData[deviceUUID].value.eco_mode_state.ecoMode == "ECO_MODE_INACTIVE" && typeof value == "number") ||
                     (key == "target_temperature_low" && this.rawData[deviceUUID].value.eco_mode_state.ecoMode == "ECO_MODE_INACTIVE" && typeof value == "number") ||
@@ -3548,12 +3553,6 @@ class NestSystem {
         }
 
         return temperature;
-    }
-
-    #validateHomeKitName(nameToMakeValid) {
-        // Strip invalid characters to meet HomeKit naming requirements
-        // Ensure only letters or numbers are at the beginning AND/OR end of string
-        return nameToMakeValid.replace(/[^A-Za-z0-9 ,.-]/g, "").replace(/^[^a-zA-Z0-9]*/g, "").replace(/[^a-zA-Z0-9]+$/g, "");
     }
 
     #crc24(valueToHash) {

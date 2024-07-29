@@ -480,11 +480,11 @@ class HomeKitHistory {
                 service.updateCharacteristic(HAP.Characteristic.EveTimesOpened, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1}));   // Count of entries based upon status = 1, opened
                 service.updateCharacteristic(HAP.Characteristic.EveLastActivation, this.#EveLastEventTime()); // time of last event in seconds since first event
                 
-                service.getCharacteristic(HAP.Characteristic.EveTimesOpened).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveTimesOpened).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1}));  // Count of entries based upon status = 1, opened
                 });
                 
-                service.getCharacteristic(HAP.Characteristic.EveLastActivation).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveLastActivation).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.#EveLastEventTime());  // time of last event in seconds since first event
                 });
                 break;
@@ -506,11 +506,11 @@ class HomeKitHistory {
                 service.updateCharacteristic(HAP.Characteristic.EveTimesOpened, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1}));   // Count of entries based upon status = 1, opened
                 service.updateCharacteristic(HAP.Characteristic.EveLastActivation, this.#EveLastEventTime()); // time of last event in seconds since first event
                 
-                service.getCharacteristic(HAP.Characteristic.EveTimesOpened).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveTimesOpened).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.entryCount(this.EveHome.type, this.EveHome.sub, {status: 1})); // Count of entries based upon status = 1, opened
                 });
                 
-                service.getCharacteristic(HAP.Characteristic.EveLastActivation).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveLastActivation).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.#EveLastEventTime());  // time of last event in seconds since first event
                 });
                 break;
@@ -543,7 +543,7 @@ class HomeKitHistory {
                 } */
 
 
-                service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     var value = util.format(
                         "0002 5500 0302 %s 9b04 %s 1e02 5500 0c",
                         numberToEveHexString(2979, 4),  // firmware version (build xxxx)
@@ -552,7 +552,7 @@ class HomeKitHistory {
                         callback(undefined, encodeEveData(value));
                 });
 
-                service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                     var processedData = {};
                     var valHex = decodeEveData(value);
                     var index = 0;
@@ -651,11 +651,11 @@ class HomeKitHistory {
                 service.updateCharacteristic(HAP.Characteristic.EveFirmware, encodeEveData(util.format("2c %s be", numberToEveHexString(this.EveThermoPersist.firmware, 4))));  // firmware version (build xxxx)));
                 
                 service.updateCharacteristic(HAP.Characteristic.EveProgramData, this.#EveThermoGetDetails(optionalParams.getcommand));
-                service.getCharacteristic(HAP.Characteristic.EveProgramData).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveProgramData).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.#EveThermoGetDetails(optionalParams.getcommand));
                 });
 
-                service.getCharacteristic(HAP.Characteristic.EveProgramCommand).on("set", (value, callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveProgramCommand).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                     var programs = [];
                     var processedData = {};
                     var valHex = decodeEveData(value);
@@ -898,30 +898,30 @@ class HomeKitHistory {
 
                 // Setup initial values and callbacks for charateristics we are using
                 service.updateCharacteristic(HAP.Characteristic.EveLastActivation, this.#EveLastEventTime()); // time of last event in seconds since first event
-                service.getCharacteristic(HAP.Characteristic.EveLastActivation).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveLastActivation).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.#EveLastEventTime());  // time of last event in seconds since first event
                 });
 
                 service.updateCharacteristic(HAP.Characteristic.EveSensitivity, this.EveMotionPersist.sensitivity);
-                service.getCharacteristic(HAP.Characteristic.EveSensitivity).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveSensitivity).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.EveMotionPersist.sensitivity);
                 });
-                service.getCharacteristic(HAP.Characteristic.EveSensitivity).on("set", (value, callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveSensitivity).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                     this.EveMotionPersist.sensitivity = value;
                     callback();
                 });
 
                 service.updateCharacteristic(HAP.Characteristic.EveDuration, this.EveMotionPersist.duration);
-                service.getCharacteristic(HAP.Characteristic.EveDuration).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveDuration).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.EveMotionPersist.duration);
                 });
-                service.getCharacteristic(HAP.Characteristic.EveDuration).on("set", (value, callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveDuration).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                     this.EveMotionPersist.duration = value; 
                     callback();
                 });
 
                 /*service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, encodeEveData("300100"));
-                service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     var value = util.format(
                         "0002 2500 0302 %s 9b04 %s 8002 ffff 1e02 2500 0c",
                         numberToEveHexString(1144, 4),  // firmware version (build xxxx)
@@ -932,7 +932,7 @@ class HomeKitHistory {
         
                     callback(undefined, encodeEveData(value));
                 });
-                service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                     var valHex = decodeEveData(value);
                     var index = 0;
                     while (index < valHex.length) {
@@ -991,16 +991,16 @@ class HomeKitHistory {
         
                 // Setup initial values and callbacks for charateristics we are using
                 service.updateCharacteristic(HAP.Characteristic.EveDeviceStatus, this.#EveSmokeGetDetails(optionalParams.getcommand, HAP.Characteristic.EveDeviceStatus));
-                service.getCharacteristic(HAP.Characteristic.EveDeviceStatus).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveDeviceStatus).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.#EveSmokeGetDetails(optionalParams.getcommand, HAP.Characteristic.EveDeviceStatus));
                 });
 
                 service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, this.#EveSmokeGetDetails(optionalParams.getcommand, HAP.Characteristic.EveGetConfiguration));
-                service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.#EveSmokeGetDetails(optionalParams.getcommand, HAP.Characteristic.EveGetConfiguration));
                 });
 
-                service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                     // Loop through set commands passed to us
                     var processedData = {};
                     var valHex = decodeEveData(value);
@@ -1073,11 +1073,11 @@ class HomeKitHistory {
             
                 // Setup initial values and callbacks for charateristics we are using
                 service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, this.#EveAquaGetDetails(optionalParams.getcommand));
-                service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.#EveAquaGetDetails(optionalParams.getcommand));
                 });
 
-                service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                     // Loop through set commands passed to us
                     var programs = [];
                     var processedData = {};
@@ -1280,17 +1280,17 @@ class HomeKitHistory {
                 service.updateCharacteristic(HAP.Characteristic.EveFirmware, encodeEveData(util.format("29 %s be", numberToEveHexString(807, 4))));  // firmware version (build xxxx)));
 
                 service.updateCharacteristic(HAP.Characteristic.EveElectricalCurrent, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalCurrent));
-                service.getCharacteristic(HAP.Characteristic.EveElectricalCurrent).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveElectricalCurrent).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalCurrent));
                 });
 
                 service.updateCharacteristic(HAP.Characteristic.EveElectricalVoltage, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalVoltage));
-                service.getCharacteristic(HAP.Characteristic.EveElectricalVoltage).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveElectricalVoltage).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalVoltage));
                 });
 
                 service.updateCharacteristic(HAP.Characteristic.EveElectricalWattage, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalWattage));
-                service.getCharacteristic(HAP.Characteristic.EveElectricalWattage).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveElectricalWattage).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.#EveEnergyGetDetails(optionalParams.getcommand, HAP.Characteristic.EveElectricalWattage));
                 });
                 break;
@@ -1319,11 +1319,11 @@ class HomeKitHistory {
             
                 // Setup initial values and callbacks for charateristics we are using
                 service.updateCharacteristic(HAP.Characteristic.EveGetConfiguration, this.#EveWaterGuardGetDetails(optionalParams.getcommand));
-                service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on("get", (callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveGetConfiguration).on(HAP.CharacteristicEventTypes.GET, (callback) => {
                     callback(undefined, this.#EveWaterGuardGetDetails(optionalParams.getcommand));
                 });
 
-                service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on("set", (value, callback) => {
+                service.getCharacteristic(HAP.Characteristic.EveSetConfiguration).on(HAP.CharacteristicEventTypes.SET, (value, callback) => {
                     var valHex = decodeEveData(value);
                     var index = 0;
                     while (index < valHex.length) {
@@ -1378,11 +1378,11 @@ class HomeKitHistory {
     
         // Setup callbacks if our service successfully created
         if (typeof this.EveHome == "object" && this.EveHome.hasOwnProperty("service") == true) {
-            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveResetTotal).on("get", (callback) => {callback(undefined, this.historyData.reset - EPOCH_OFFSET)});   // time since history reset
-            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryStatus).on("get", this.#EveHistoryStatus.bind(this));
-            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryEntries).on("get", this.#EveHistoryEntries.bind(this));
-            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryRequest).on("set", this.#EveHistoryRequest.bind(this));
-            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveSetTime).on("set", this.#EveSetTime.bind(this));
+            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveResetTotal).on(HAP.CharacteristicEventTypes.GET, (callback) => {callback(undefined, this.historyData.reset - EPOCH_OFFSET)});   // time since history reset
+            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryStatus).on(HAP.CharacteristicEventTypes.GET, this.#EveHistoryStatus.bind(this));
+            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryEntries).on(HAP.CharacteristicEventTypes.GET, this.#EveHistoryEntries.bind(this));
+            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveHistoryRequest).on(HAP.CharacteristicEventTypes.SET, this.#EveHistoryRequest.bind(this));
+            this.EveHome.service.getCharacteristic(HAP.Characteristic.EveSetTime).on(HAP.CharacteristicEventTypes.SET, this.#EveSetTime.bind(this));
 
             return this.EveHome.service;    // Return service handle for our EveHome accessory service
         }
@@ -2100,7 +2100,7 @@ class EveClosedDuration extends HAP.Characteristic {
 HAP.Characteristic.EveClosedDuration = EveClosedDuration;
 
 class EveOpenDuration extends HAP.Characteristic {
-    static UUID = "E863F119-079E-48FF-8F27-9C2605A29F522";
+    static UUID = "E863F119-079E-48FF-8F27-9C2605A29F52";
     constructor() {
         super("Eve Opened Duration", EveOpenDuration.UUID, {
             format: HAP.Formats.UINT32,
@@ -2149,7 +2149,7 @@ class EveElectricalVoltage extends HAP.Characteristic {
 HAP.Characteristic.EveElectricalVoltage = EveElectricalVoltage;
 
 class EveElectricalCurrent extends HAP.Characteristic {
-    static UUID = "E863F126-079E-48FF-8F27-9C2605A29F5";
+    static UUID = "E863F126-079E-48FF-8F27-9C2605A29F52";
     constructor() {
         super("Eve Current", EveElectricalCurrent.UUID, {
             format: HAP.Formats.FLOAT,
