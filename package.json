@@ -1,45 +1,60 @@
 {
-  "name": "nest_accfactory",
-  "description": "HomeKit integration for Nest devices using HAP-NodeJS library",
+  "displayName": "Nest Accfactory",
+  "name": "nest-accfactory",
+  "homepage": "https://github.com/n0rt0nthec4t/Nest_accfactory",
   "version": "0.1.6",
-  "main": "Nest_accfactory.js",
+  "description": "HomeKit integration for Nest devices using HAP-NodeJS library",
+  "license": "Apache-2.0",
+  "author": "n0rt0nthec4t",
+  "type": "module",
   "repository": {
-    "type": "git",
-    "url": "https://github.com/n0rt0nthec4t/Nest_accfactory"
+      "type": "git",
+      "url": "git+https://github.com/n0rt0nthec4t/Nest_accfactory.git"
+  },
+  "bugs": {
+      "url": "https://github.com/n0rt0nthec4t/Nest_accfactory/issues"
+  },
+  "engines": {
+      "node": "^18.20.4 || ^20.16.0 || ^22.5.1",
+      "hap-nodejs": ">=1.1.0"
+  },
+  "main": "dist/index.js",
+  "files": [
+      "LICENSE",
+      "dist/**/*"
+  ],
+  "scripts": {
+      "lint": "eslint src/**/*.js --max-warnings=0",
+      "watch": "npm run build && npm link && nodemon",
+      "build": "rimraf ./dist && copyfiles -u 1 src/*.js dist && copyfiles -u 1 src/res/*.h264 dist && copyfiles -u 1 src/res/*.jpg dist && copyfiles -u 1 'src/protobuf/**/*.proto' dist",
+      "prepublishOnly": "npm run lint && npm run build"
   },
   "keywords": [
-    "homekit",
-    "hksv",
-    "hap-nodejs",
-    "nest",
-    "doorbell",
-    "camera",
-    "thermostat",
-    "temperature",
-    "smoke",
-    "sensor"
+      "hksv",
+      "hap-nodejs",
+      "nest",
+      "doorbell",
+      "camera",
+      "thermostat",
+      "temperature",
+      "smoke",
+      "sensor"
   ],
-  "author": "Mark Hulskamp <mark@n0rt0nthec4t.dev>",
-  "funding": [
-    {
-      "type": "paypal",
-      "url": "https://www.paypal.com/donate/?cmd=_donations&business=YF53YVW333VVY&item_name=HAP-NodeJS-Accessories&currency_code=AUD&source=url"
-    }
-  ],
-  "license": "Apache-2.0",
-  "bugs": {
-    "url": "https://github.com/n0rt0nthec4t/Nest_accfactory/discussions"
-  },
-  "homepage": "https://github.com/n0rt0nthec4t/Nest_accfactory",
-  "engines": {
-    "node": ">=18.0.0",
-    "hap-nodejs": ">=1.0.0"
+  "devDependencies": {
+      "@types/node": "^20.14.12",
+      "@typescript-eslint/eslint-plugin": "^7.17.0",
+      "@typescript-eslint/parser": "^7.17.0",
+      "copyfiles": "^2.4.1",
+      "eslint": "^8.57.0",
+      "hap-nodejs": "^1.1.0",
+      "nodemon": "^3.1.4",
+      "rimraf": "^6.0.1"
   },
   "dependencies": {
-    "hap-nodejs": ">=1.0.0",
-    "axios": ">=1.6.7",
-    "pbf": "^3.3.0",
-    "ws": ">=8.17.1",
-    "protobufjs": ">=7.2.6"
+      "axios": ">=1.6.7",
+      "pbf": "^3.3.0",
+      "protobufjs": ">=7.2.6",
+      "ws": ">=8.17.1",
+      "chalk":">=5.0.0"
   }
 }

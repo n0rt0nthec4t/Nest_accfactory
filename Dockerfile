@@ -119,13 +119,6 @@ WORKDIR /opt/Nest_accfactory
 
 # copy require files into container image folder
 COPY package.json ./
-COPY Nest_accfactory.js ./
-COPY Nest_camera_*.jpg ./
-COPY Nest_camera_*.h264 ./
-COPY HomeKitHistory.js ./
-COPY HomeKitDevice.js ./
-COPY nexusstreamer.js ./
-COPY protobuf/ ./protobuf/
 COPY --from=builder /build/ffmpeg-${FFMPEG_VERSION}/ffmpeg ./
 
 # perform installation based on details in package.json
@@ -142,7 +135,7 @@ RUN chown -R node:node /opt/Nest_accfactory
 
 # run the accessory, using non-root user, "node"
 USER node
-ENTRYPOINT ["node", "/opt/Nest_accfactory/Nest_accfactory.js", "/opt/Nest_accfactory/conf/Nest_config.json"]
+ENTRYPOINT ["node", "/opt/Nest_accfactory/dist/index.js", "/opt/Nest_accfactory/conf/Nest_config.json"]
 
 # labels for the container
 LABEL org.opencontainers.image.title="Nest_accfactory"
