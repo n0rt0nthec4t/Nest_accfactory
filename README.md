@@ -26,13 +26,13 @@ The accessory supports connection to Nest using a Nest account OR a Google (migr
 
 ## Configuration
 
-### Obtaining a Session Token for a Nest Account
+### Obtaining a Access Token for a Nest Account
 
 If you have a Nest account, you will need to obtain an access token from the Nest web app. Simply go to https://home.nest.com in your browser and log in. Once that's done, go to https://home.nest.com/session in your browser, and you will see a long string that looks like this:
 
 {"2fa_state":"enrolled","access_token":"XXX", ...}
 
-Simply set "SessionToken" in your Nest_config.json file to the value of "access_token" near the start of the string (the XXX), which will be a long sequence of letters, numbers and punctuation beginning with b. There may be other keys labelled access_token further along in the string - please ignore these.
+Simply set "access token" in your Nest_config.json file to the value of "access_token" near the start of the string (the XXX), which will be a long sequence of letters, numbers and punctuation beginning with b. There may be other keys labelled access_token further along in the string - please ignore these.
 
 **Do not log out of home.nest.com, as this will invalidate your credentials. Just close the browser tab**
 
@@ -70,7 +70,7 @@ Nest_config.json is the configuration file where various options can be. An exam
 {
     "Connections" : {
         "Nest" : {
-            "access_token" : "<nest session token>"
+            "access_token" : "<nest access token>"
         },
     },
     "HKSV" : true
@@ -121,7 +121,6 @@ The options available are within the configuration file are listed below. Some o
 | EveApp                     | true, false             | Integration with Evehome App. Default is true                                             | global/local |
 | HomeKitCode                |                         | HomeKit pairing code in format of "xxx-xx-xxx". Default is 031-45-154                     | global/local |
 | Weather                    | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
-| Debug                      | true, false             | Turns debugging on or off. Default is off                                                 | global       |
 | mDNS                       | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is bonjour                                        | global       |
 | HKSV                       | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras. Default is off.           | global/local |
 | HKSVPreBuffer              | seconds or milliseconds | Amount of time the pre-buffer for HomeKit Secure Video holds data. Default is 15 seconds  | global/local |
@@ -146,6 +145,8 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                                      |
 |------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| v0.1.6           | Merged to a common code based which aligns with my new project for this, homebridge-nest-accfactory                                            |
+|                  | Configuration file format has change, but for this version, we'll handle the existing one                                                    |
 | v0.1.5           | Support for Nest devices using protobuf protocols. Mainly Thermostat(s) and Temperature Sensors                                              |
 |                  | Added option to specifiy the HomeKit pairing code                                                                                            |
 |                  | Docker hosted version includes required ffmpeg binary at ffmpeg 7.0                                                                          |

@@ -141,7 +141,7 @@ function loadConfiguration(filename) {
                 config.options.weather = value;
             }
             if (key === 'HKSV' && typeof value === 'boolean') {
-                // Global excluding for all device(s) by default
+                // Global HomeKit Secure Video
                 config.options.hksv = value;
             }
             if (key === 'HomeKitCode' && typeof value === 'string' && value !== '') {
@@ -192,11 +192,11 @@ function loadConfiguration(filename) {
                         config.devices[key]['hksv'] = value;
                     }
                     if (subKey === 'Option.indoor_chime_switch' && typeof value === 'boolean') {
-                        // Per device HomeKit Secure Video
+                        // Per device silence indoor chime
                         config.devices[key]['chimeSwitch'] = value;
                     }
                     if (subKey === 'Option.elevation' && typeof value === 'number') {
-                        // Per device HomeKit Secure Video
+                        // Per device elevation setting (for weather)
                         config.devices[key]['elevation'] = value;
                     }
                     if (subKey === 'HomeKitCode' && typeof value === 'string' && value !== '') {
@@ -306,7 +306,6 @@ if (config?.nest === undefined || config?.google === undefined ) {
     process.exit(1);
 }
 
-// For each connection specified in the configuration file
 log.info('Devices will be advertised to HomeKit using "%s" mDNS provider', (typeof config?.options?.mDNS !== 'undefined' ? config.options?.mDNS : HAP.MDNSAdvertiser.CIAO));
 let nest = new NestAccfactory(log, config, HAP);
 nest.discoverDevices();    // Kick things off :-)
