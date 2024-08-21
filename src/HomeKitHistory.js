@@ -8,7 +8,7 @@
 // -- Eve Degree/Weather2 history
 // -- Eve Water guard history
 //
-// Version 20/8/2024
+// Version 21/8/2024
 // Mark Hulskamp
 
 // Define HAP-NodeJS requirements
@@ -34,7 +34,7 @@ export default class HomeKitHistory {
     accessory = undefined;
     EveHome = undefined;
 
-    constructor(accessory, api, log, options) {
+    constructor(accessory, log, options) {
         // Validate the passed in logging object. We are expecting certain functions to be present
         if (typeof log?.info === 'function' &&
             typeof log?.success === 'function' &&

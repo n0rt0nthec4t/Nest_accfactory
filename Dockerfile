@@ -1,5 +1,5 @@
 # version of required ffmpeg binary is specified in FFMPEG_VERSION
-ARG FFMPEG_VERSION=7.0.1
+ARG FFMPEG_VERSION=7.0.2
 
 # version of node docker we will use. 
 # Pegged at node v18.x as bug in docker builds on armv7/armv6 when using later versions

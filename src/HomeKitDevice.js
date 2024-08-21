@@ -143,6 +143,8 @@ export default class HomeKitDevice {
     // Class functions
     async add(accessoryName, accessoryCategory, useHistoryService) {
         if (this.hap === undefined ||
+            HomeKitDevice.PLUGIN_NAME === undefined ||
+            HomeKitDevice.PLATFORM_NAME === undefined ||
             typeof accessoryName !== 'string' || accessoryName === '' ||
             typeof this.hap.Categories[accessoryCategory] === 'undefined' ||
             typeof useHistoryService !== 'boolean' ||
@@ -210,7 +212,7 @@ export default class HomeKitDevice {
             this.historyService === undefined &&
             useHistoryService === true) {
 
-            this.historyService = new HomeKitDevice.HISTORY(this.accessory, this.hap, this.log);
+            this.historyService = new HomeKitDevice.HISTORY(this.accessory, this.log, {});
         }
 
         if (typeof this.addServices === 'function') {
@@ -249,7 +251,7 @@ export default class HomeKitDevice {
             this.accessory !== undefined) {
 
             if (this?.log?.info) {
-                this.log.info('Advertising accessory "%s" to local network using HAP-NodeJS library', accessoryName);
+                this.log.info('Advertising accessory "%s" to local network', accessoryName);
             }
             this.accessory.publish({
                 username: this.accessory.username,
