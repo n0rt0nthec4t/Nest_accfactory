@@ -5,8 +5,8 @@
 // Mark Hulskamp
 'use strict';
 
-// Define Homebridge module requirements
-import Homebridge from 'homebridge';
+// Define HAP module requirements
+import HAP from 'hap-nodejs';
 
 // Define nodejs module requirements
 import { setTimeout, clearTimeout } from 'node:timers';
@@ -39,13 +39,13 @@ export default class NestDoorbell extends NestCamera {
                 delegate: this,
                 options: {
                     overrideEventTriggerOptions: [
-                        Homebridge.EventTriggerOption.MOTION,
-                        Homebridge.EventTriggerOption.DOORBELL,
+                        HAP.EventTriggerOption.MOTION,
+                        HAP.EventTriggerOption.DOORBELL,
                     ],
                     mediaContainerConfiguration: [
                         {
                             fragmentLength: 4000,
-                            type: Homebridge.MediaContainerType.FRAGMENTED_MP4,
+                            type: HAP.MediaContainerType.FRAGMENTED_MP4,
                         },
                     ],
                     prebufferLength: 4000,  // Seems to always be 4000???
@@ -60,8 +60,8 @@ export default class NestDoorbell extends NestCamera {
                     audio : {
                         codecs: [
                             {
-                                type: Homebridge.AudioStreamingCodecType.AAC_ELD,
-                                samplerate: Homebridge.AudioStreamingSamplerate.KHZ_16,
+                                type: HAP.AudioStreamingCodecType.AAC_ELD,
+                                samplerate: HAP.AudioStreamingSamplerate.KHZ_16,
                                 audioChannel: 1,
                             },
                         ],

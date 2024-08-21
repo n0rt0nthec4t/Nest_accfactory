@@ -116,14 +116,18 @@ RUN apk update \
 
 # working directory inside the container
 WORKDIR /opt/Nest_accfactory
+RUN mkdir ${WORKDIR}/dist
 
 # copy require files into container image folder
 COPY package.json ./
-COPY --from=builder /build/ffmpeg-${FFMPEG_VERSION}/ffmpeg ./
+COPY src/*.js ./dist/
+COPY src/res/ ./dist/res/
+COPY src/protobuf/ ./dist/protobuf/
+COPY --from=builder /build/ffmpeg-${FFMPEG_VERSION}/ffmpeg ./dist
 
 # perform installation based on details in package.json
 RUN npm update -g \
-    && npm install
+    && npm install --omit=dev
 
 # tidy up install by removing sample accessories from hap-nodejs
 RUN rm -rf ./node_modules/hap-nodejs/dist/accessories

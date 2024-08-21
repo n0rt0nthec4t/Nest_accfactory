@@ -5,8 +5,8 @@
 // Mark Hulskamp
 'use strict';
 
-// Define Homebridge module requirements
-import Homebridge from 'homebridge';
+// Define HAP module requirements
+import HAP from 'hap-nodejs';
 
 // Define nodejs module requirements
 import EventEmitter from 'node:events';
@@ -22,7 +22,6 @@ import {fileURLToPath} from 'node:url';
 
 // Define external module requirements
 import axios from 'axios';
-import ffmpegPath from 'ffmpeg-for-homebridge';
 
 // Define our modules
 import HomeKitDevice from './HomeKitDevice.js';
@@ -69,8 +68,8 @@ export default class NestCamera extends HomeKitDevice {
         delegate: undefined,
         streamingOptions: {
             supportedCryptoSuites: [
-                Homebridge.SRTPCryptoSuites.NONE,
-                Homebridge.SRTPCryptoSuites.AES_CM_128_HMAC_SHA1_80,
+                HAP.SRTPCryptoSuites.NONE,
+                HAP.SRTPCryptoSuites.AES_CM_128_HMAC_SHA1_80,
             ],
             video: {
                 resolutions: [
@@ -91,16 +90,16 @@ export default class NestCamera extends HomeKitDevice {
                     [320, 180, 15],
                 ],
                 codec: {
-                    type: 0x00, // Homebridge.VideoCodecType.H264 - NOT defined
+                    type: HAP.VideoCodecType.H264,
                     profiles : [
-                        Homebridge.H264Profile.BASELINE,
-                        Homebridge.H264Profile.MAIN,
-                        Homebridge.H264Profile.HIGH,
+                        HAP.H264Profile.BASELINE,
+                        HAP.H264Profile.MAIN,
+                        HAP.H264Profile.HIGH,
                     ],
                     levels: [
-                        Homebridge.H264Level.LEVEL3_1,
-                        Homebridge.H264Level.LEVEL3_2,
-                        Homebridge.H264Level.LEVEL4_0,
+                        HAP.H264Level.LEVEL3_1,
+                        HAP.H264Level.LEVEL3_2,
+                        HAP.H264Level.LEVEL4_0,
                     ],
                 },
             },
@@ -108,8 +107,8 @@ export default class NestCamera extends HomeKitDevice {
                 twoWayAudio: false,
                 codecs: [
                     {
-                        type: Homebridge.AudioStreamingCodecType.AAC_ELD,
-                        samplerate: Homebridge.AudioStreamingSamplerate.KHZ_16,
+                        type: HAP.AudioStreamingCodecType.AAC_ELD,
+                        samplerate: HAP.AudioStreamingSamplerate.KHZ_16,
                         audioChannel: 1,
                     },
                 ],
@@ -170,12 +169,12 @@ export default class NestCamera extends HomeKitDevice {
                 delegate: this,
                 options: {
                     overrideEventTriggerOptions: [
-                        Homebridge.EventTriggerOption.MOTION,
+                        HAP.EventTriggerOption.MOTION,
                     ],
                     mediaContainerConfiguration: [
                         {
                             fragmentLength: 4000,
-                            type: Homebridge.MediaContainerType.FRAGMENTED_MP4,
+                            type: HAP.MediaContainerType.FRAGMENTED_MP4,
                         },
                     ],
                     prebufferLength: 4000,  // Seems to always be 4000???
@@ -190,8 +189,8 @@ export default class NestCamera extends HomeKitDevice {
                     audio : {
                         codecs: [
                             {
-                                type: Homebridge.AudioStreamingCodecType.AAC_ELD,
-                                samplerate: Homebridge.AudioStreamingSamplerate.KHZ_16,
+                                type: HAP.AudioStreamingCodecType.AAC_ELD,
+                                samplerate: HAP.AudioStreamingSamplerate.KHZ_16,
                                 audioChannel: 1,
                             },
                         ],
@@ -326,7 +325,7 @@ export default class NestCamera extends HomeKitDevice {
             + ' -f mp4'    // output is an mp4
             + ' pipe:1';    // output to stdout
 
-        this.HKSVRecorder.ffmpeg = child_process.spawn(ffmpegPath || 'ffmpeg', commandLine.split(' '), { env: process.env, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });    // Extra pipe, #3 for audio data
+        this.HKSVRecorder.ffmpeg = child_process.spawn(__dirname + '/ffmpeg', commandLine.split(' '), { env: process.env, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });    // Extra pipe, #3 for audio data
 
         this.HKSVRecorder.video = this.HKSVRecorder.ffmpeg.stdin;   // Video data on stdio pipe for ffmpeg
         this.HKSVRecorder.audio = (includeAudio === true ? this.HKSVRecorder.ffmpeg.stdio[3] : null);    // Audio data on extra pipe for ffmpeg or null if audio recording disabled
@@ -655,7 +654,7 @@ export default class NestCamera extends HomeKitDevice {
 
             // Start our ffmpeg streaming process and stream from nexus
             this.log.info('Live stream started on "%s"', this.deviceData.description);
-            let ffmpegStreaming = child_process.spawn(ffmpegPath || 'ffmpeg', commandLine.split(' '), { env: process.env, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });    // Extra pipe, #3 for audio data
+            let ffmpegStreaming = child_process.spawn(__dirname + '/ffmpeg', commandLine.split(' '), { env: process.env, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });    // Extra pipe, #3 for audio data
             this.NexusStreamer.startLiveStream(request.sessionID, ffmpegStreaming.stdin, (this.deviceData.audio_enabled === true && ffmpegStreaming.stdio[3] ? ffmpegStreaming.stdio[3] : null), false);
 
             // ffmpeg console output is via stderr
@@ -715,7 +714,7 @@ export default class NestCamera extends HomeKitDevice {
                     + ' -ar 16k'
                     + ' -f data pipe:1';
 
-                ffmpegAudioTalkback = child_process.spawn(ffmpegPath || 'ffmpeg', commandLine.split(' '), { env: process.env });
+                ffmpegAudioTalkback = child_process.spawn(__dirname + '/ffmpeg', commandLine.split(' '), { env: process.env });
                 ffmpegAudioTalkback.on('error', (error) => {
                     this.log.debug('FFmpeg failed to start Nest camera talkback audio process', error.message);
                 });
@@ -862,7 +861,7 @@ export default class NestCamera extends HomeKitDevice {
                 if (this.motionTimer === undefined) {
                     if (this?.log?.info) {
                         if (deviceData.hksv === true) {
-                            this.log.info('Motion detected at "%s" %s"', this.deviceData.description, this.controller.recordingManagement.operatingModeService.getCharacteristic(this.hap.Characteristic.HomeKitCameraActive).value === this.hap.Characteristic.HomeKitCameraActive.OFF ? 'but HSKV recording disabled' : '')
+                            this.log.info('Motion detected at "%s" %s', this.deviceData.description, this.controller.recordingManagement.operatingModeService.getCharacteristic(this.hap.Characteristic.HomeKitCameraActive).value === this.hap.Characteristic.HomeKitCameraActive.OFF ? 'but HSKV recording disabled' : '')
                         }
                         if (deviceData.hksv === false) {
                             this.log.info('Motion detected at "%s"', this.deviceData.description);

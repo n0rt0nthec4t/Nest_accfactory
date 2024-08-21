@@ -54,9 +54,8 @@ export default class NestAccfactory {
     };
 
     static DataSource = {
-        REST : 'REST',                                                          // Data has come from the REST API
-        PROTOBUF : 'PROTOBUF',                                                  // Data has come from the protobuf API
-        SDM : 'SDM',                                                            // Data has come from the Google SDM API (todo)
+        REST : 'REST',                                                          // From the REST API
+        PROTOBUF : 'PROTOBUF',                                                  // From the protobuf API
     };
 
     static GoogleConnection = 'google';

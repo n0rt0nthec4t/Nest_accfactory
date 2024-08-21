@@ -1,60 +1,59 @@
 {
-  "displayName": "Nest Accfactory",
-  "name": "nest-accfactory",
-  "homepage": "https://github.com/n0rt0nthec4t/Nest_accfactory",
-  "version": "0.1.6",
-  "description": "HomeKit integration for Nest devices using HAP-NodeJS library",
-  "license": "Apache-2.0",
-  "author": "n0rt0nthec4t",
-  "type": "module",
-  "repository": {
-      "type": "git",
-      "url": "git+https://github.com/n0rt0nthec4t/Nest_accfactory.git"
-  },
-  "bugs": {
-      "url": "https://github.com/n0rt0nthec4t/Nest_accfactory/issues"
-  },
-  "engines": {
-      "node": "^18.20.4 || ^20.16.0 || ^22.5.1",
-      "hap-nodejs": ">=1.1.0"
-  },
-  "main": "dist/index.js",
-  "files": [
-      "LICENSE",
-      "dist/**/*"
-  ],
-  "scripts": {
-      "lint": "eslint src/**/*.js --max-warnings=0",
-      "watch": "npm run build && npm link && nodemon",
-      "build": "rimraf ./dist && copyfiles -u 1 src/*.js dist && copyfiles -u 1 src/res/*.h264 dist && copyfiles -u 1 src/res/*.jpg dist && copyfiles -u 1 'src/protobuf/**/*.proto' dist",
-      "prepublishOnly": "npm run lint && npm run build"
-  },
-  "keywords": [
-      "hksv",
-      "hap-nodejs",
-      "nest",
-      "doorbell",
-      "camera",
-      "thermostat",
-      "temperature",
-      "smoke",
-      "sensor"
-  ],
-  "devDependencies": {
-      "@types/node": "^20.14.12",
-      "@typescript-eslint/eslint-plugin": "^7.17.0",
-      "@typescript-eslint/parser": "^7.17.0",
-      "copyfiles": "^2.4.1",
-      "eslint": "^8.57.0",
-      "hap-nodejs": "^1.1.0",
-      "nodemon": "^3.1.4",
-      "rimraf": "^6.0.1"
-  },
-  "dependencies": {
-      "axios": ">=1.6.7",
-      "pbf": "^3.3.0",
-      "protobufjs": ">=7.2.6",
-      "ws": ">=8.17.1",
-      "chalk":">=5.0.0"
-  }
+    "displayName": "Nest Accfactory",
+    "name": "nest-accfactory",
+    "homepage": "https://github.com/n0rt0nthec4t/Nest_accfactory",
+    "version": "0.1.6",
+    "description": "HomeKit integration for Nest devices using HAP-NodeJS library",
+    "license": "Apache-2.0",
+    "author": "n0rt0nthec4t",
+    "type": "module",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/n0rt0nthec4t/Nest_accfactory.git"
+    },
+    "bugs": {
+        "url": "https://github.com/n0rt0nthec4t/Nest_accfactory/issues"
+    },
+    "engines": {
+        "node": "^20.16.0"
+    },
+    "main": "dist/index.js",
+    "files": [
+        "LICENSE",
+        "dist/**/*"
+    ],
+    "scripts": {
+        "lint": "eslint src/**/*.js --max-warnings=0",
+        "watch": "npm run build && npm link && nodemon",
+        "build": "rimraf ./dist && copyfiles -u 1 src/*.js dist && copyfiles -u 1 src/res/*.h264 dist && copyfiles -u 1 src/res/*.jpg dist && copyfiles -u 1 'src/protobuf/**/*.proto' dist",
+        "prepublishOnly": "npm run lint && npm run build"
+    },
+    "keywords": [
+        "hksv",
+        "hap-nodejs",
+        "nest",
+        "doorbell",
+        "camera",
+        "thermostat",
+        "temperature",
+        "smoke",
+        "sensor"
+    ],
+    "devDependencies": {
+        "@types/node": "^20.16.0",
+        "@typescript-eslint/eslint-plugin": "^7.17.0",
+        "@typescript-eslint/parser": "^7.17.0",
+        "copyfiles": "^2.4.1",
+        "eslint": "^8.57.0",
+        "nodemon": "^3.1.4",
+        "rimraf": "^6.0.1"
+    },
+    "dependencies": {
+        "hap-nodejs": "^1.1.0",
+        "axios": "^1.7.2",
+        "chalk": ">=5.0.0",
+        "pbf": "^3.3.0",
+        "protobufjs": ">=7.2.6",
+        "ws": ">=8.17.1"
+    }
 }

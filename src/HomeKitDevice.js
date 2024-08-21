@@ -32,12 +32,12 @@
 //
 // The following functions should be overriden in your class which extends this
 //
-// HomeKitDevice.addServices(serviceName)
+// HomeKitDevice.addServices()
 // HomeKitDevice.removeServices()
 // HomeKitDevice.updateServices(deviceData)
 // HomeKitDevice.messageServices(type, message)
 //
-// Code version 20/8/2024
+// Code version 21/8/2024
 // Mark Hulskamp
 'use strict';
 
@@ -216,7 +216,7 @@ export default class HomeKitDevice {
         if (typeof this.addServices === 'function') {
             try {
                 let postSetupDetails = await this.addServices();
-                if (this?.log?.success) {
+                if (this?.log?.info) {
                     this.log.info('Setup %s %s as "%s"', this.deviceData.manufacturer, this.deviceData.model, this.deviceData.description);
                 }
                 if (this.historyService?.EveHome !== undefined && this?.log?.info) {
@@ -224,7 +224,9 @@ export default class HomeKitDevice {
                 }
                 if (typeof postSetupDetails === 'object') {
                     postSetupDetails.forEach((output) => {
-                        this?.log?.info && this.log.info('  += %s', output);
+                        if (this?.log?.info) {
+                            this.log.info('  += %s', output);
+                        }
                     });
                 }
             } catch (error) {
