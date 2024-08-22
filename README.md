@@ -145,8 +145,9 @@ Nest_accfactory is a hobby project of mine, provided as-is, with no warranty wha
 
 | Version          | Changes                                                                                                                                      |
 |------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.1.6           | Merged to a common code based which aligns with my new project for this, homebridge-nest-accfactory                                            |
+| v0.1.6           | Merged to a common code based which aligns with my new project for this, homebridge-nest-accfactory                                          |
 |                  | Configuration file format has change, but for this version, we'll handle the existing one                                                    |
+|                  | Using coding styles by prettier/eslint                                                                                                       |
 | v0.1.5           | Support for Nest devices using protobuf protocols. Mainly Thermostat(s) and Temperature Sensors                                              |
 |                  | Added option to specifiy the HomeKit pairing code                                                                                            |
 |                  | Docker hosted version includes required ffmpeg binary at ffmpeg 7.0                                                                          |
