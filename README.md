@@ -140,39 +140,3 @@ If you would like to try this in a containerised version, please check out the [
 
 Nest_accfactory is a hobby project of mine, provided as-is, with no warranty whatsoever. I've been running it successfully at my home, but your mileage might vary.
 
-## Changelog
-
-| Version          | Changes                                                                                                                                      |
-|------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.1.6           | Merged to a common code based which aligns with my new project for this, homebridge-nest-accfactory                                          |
-|                  | Configuration file format has change, but for this version, we'll handle the existing one                                                    |
-|                  | Using coding styles by prettier/eslint                                                                                                       |
-| v0.1.5           | Support for Nest devices using protobuf protocols. Mainly Thermostat(s) and Temperature Sensors                                              |
-|                  | Added option to specifiy the HomeKit pairing code                                                                                            |
-|                  | Docker hosted version includes required ffmpeg binary at ffmpeg 7.0                                                                          |
-|                  | Docker hosted version no longer runs using root. This may have side effects of permissions issues with mounted persist folder                |
-| v0.1.4           | Code updates and fixes                                                                                                                       |
-| v0.1.3           | Code updates and fixes                                                                                                                       |
-|                  | Added option to use Nest/Google field test accounts                                                                                          |
-|                  | Removed package dependancy around using ffmpeg-for-homebridge. You'll need to provide your own ffmpeg binary or manually install             |
-|                  | ffmpeg-for-homebridge v0.1.0 (v0.2.0 removes required libraries, specfically libspeex                                                        |
-|                  | Docker hosted version includes required ffmpeg binary at ffmpeg 6.1                                                                          |
-| v0.1.2           | Code updates and fixes                                                                                                                       |
-|                  | Added option to enable HomeKit switch to silence Nest Hello indoor chiming                                                                   |
-| v0.1.1           | Minor code fixes.                                                                                                                            |
-| v0.1.0           | Removes Google refresh token method as nolonger supported. Switches to Google cookie method                                                  |
-| v0.0.9           | Major code rewrite for Nest accessories                                                                                                      |
-|                  | Live streaming for cameras hardcoded to use "copy" for H264 encoder                                                                          |
-|                  | Fixes to maintain connection for HKSV streaming from Nest                                                                                    |
-|                  | Known issue: Audio sync for HKSV recording maybe out due to Nest's use of adaptive framerates. Investigating work around                     |
-| v0.0.8           | H264Encoder config option changes. Will use H264EncoderLive and H264EncoderRecord                                                            |
-| v0.0.7           | Minor code fixes                                                                                                                             |
-| v0.0.6           | H264Encoder option can also be specified for a specific doorbell/camera.                                                                     |
-| v0.0.5           | New option to enabled/disable integration with Eve App in configuration                                                                      |
-|                  | Timestamps in debugging logs                                                                                                                 |
-|                  | Minor code fixes                                                                                                                             |
-| v0.0.4           | Minor code fixes                                                                                                                             |
-| v0.0.3           | Improvements to maintaining network connection for HKSV buffering                                                                            |
-|                  | New option to have a "virtual" weather station using Nest weather data. Enabled in configuration                                             |
-| v0.0.1           | Initial release to this repository                                                                                                           |
-
