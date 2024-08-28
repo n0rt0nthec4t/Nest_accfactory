@@ -1,11 +1,11 @@
 <span align="center">
   
 # Nest_accfactory
-
-  [![release](https://img.shields.io/github/release/n0rt0nthec4t/Nest_accfactory.svg?include_prereleases)](https://github.com/n0rt0nthec4t/Nest_accfactory/releases)
+  
+[![release](https://img.shields.io/github/release/n0rt0nthec4t/Nest_accfactory.svg?include_prereleases)](https://github.com/n0rt0nthec4t/Nest_accfactory/releases)
 [![version](https://img.shields.io/github/release-date/n0rt0nthec4t/Nest_accfactory)](https://github.com/n0rt0nthec4t/Nest_accfactory/releases)
 [![Donate](https://badgen.net/badge/donate/paypal/yellow)](https://paypal.me/n0rt0nthec4t)
-
+  
 </span>
 
 This is a HAP-NodeJS accessory I have developed to allow Nest devices to be used with HomeKit including having support for HomeKit Secure Video on doorbells and camera devices
@@ -123,7 +123,6 @@ The options available are within the configuration file are listed below. Some o
 | Weather                    | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
 | mDNS                       | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is bonjour                                        | global       |
 | HKSV                       | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras. Default is off.           | global/local |
-| HKSVPreBuffer              | seconds or milliseconds | Amount of time the pre-buffer for HomeKit Secure Video holds data. Default is 15 seconds  | global/local |
 | MotionCooldown             | seconds or milliseconds | Ignore motion detection for this time once triggered. Default is 1 minute                 | global/local |
 | PersonCooldown             | seconds or milliseconds | Ignore person detection for this time once triggered (Non HKSV only) Default is 2 minutes | global/local |
 | DoorbellCooldown           | seconds or milliseconds | Ignore doorbell button pressed for this time once triggered Default is 1 minute           | global/local |

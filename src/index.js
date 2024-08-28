@@ -134,7 +134,7 @@ function loadConfiguration(filename) {
       }
       if (key === 'EveApp' && typeof value === 'boolean') {
         // Global Evehome app integration
-        config.options.eveApp = value;
+        config.options.eveHistory = value;
       }
       if (key === 'Weather' && typeof value === 'boolean') {
         // Global weather device(s)
@@ -185,7 +185,7 @@ function loadConfiguration(filename) {
           }
           if (subKey === 'EveApp' && typeof value === 'boolean') {
             // Per device Evehome app integration
-            config.devices[key]['eveApp'] = value;
+            config.devices[key]['eveHistory'] = value;
           }
           if (subKey === 'HKSV' && typeof value === 'boolean') {
             // Per device HomeKit Secure Video
