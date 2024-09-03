@@ -1,8 +1,10 @@
 # version of required ffmpeg binary is specified in FFMPEG_VERSION
-ARG FFMPEG_VERSION=7.0
+ARG FFMPEG_VERSION=7.0.2
 
-# version of node docker we will use. Pegged at node v18.x as bug in docker builds on armv7 when using later versions
-ARG NODE_VERSION=18-alpine3.19
+# version of node docker we will use. 
+# Pegged at node v18.x as bug in docker builds on armv7/armv6 when using later versions
+ARG NODE_VERSION=18-alpine3.20
+#ARG NODE_VERSION=20-alpine3.20
 
 # version of our project. pass in via build, formatted as vx.x.x
 ARG NEST_ACCFACTORY_VERSION
@@ -33,7 +35,7 @@ RUN ./configure --enable-static --enable-pic \
     && make install-lib-static
 
 # get ffmpeg source and build
-# this is a paired back binary suitable for just what we need
+# this is a based on what current ffmpeg-for-homebridge does, but includes libspeex as required for Nest
 WORKDIR /build
 ADD https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2 ffmpeg-${FFMPEG_VERSION}.tar.bz2
 RUN tar -vxf ffmpeg-${FFMPEG_VERSION}.tar.bz2
@@ -44,56 +46,39 @@ RUN ./configure \
     --extra-cflags="-I/include" \
     --extra-ldflags="-L/lib" \
     --extra-libs="-lpthread -lm" \
-    --disable-debug \
-    --disable-ffplay \
-    --disable-doc \
-    --disable-demuxers \
-    --disable-muxers \
-    --disable-outdevs \
-    --disable-indevs \
-    --disable-decoders \
-    --disable-encoders \
-    --disable-protocols \
-    --enable-gpl \
-    --enable-version3 \
-    --enable-nonfree \
-    --enable-pthreads \
-    --enable-runtime-cpudetect \
-    --enable-avfilter \
-    --enable-filters \
-    --enable-network \
-    --enable-protocol=tcp \
-    --enable-protocol=udp \
-    --enable-protocol=rtp \
-    --enable-protocol=file \
-    --enable-protocol=srtp \
-    --enable-protocol=pipe \
-    --enable-libspeex \
-    --enable-libx264 \
-    --enable-libfdk-aac \
-    --enable-demuxer=sdp \
-    --enable-demuxer=rtp \
-    --enable-demuxer=h264 \
-    --enable-demuxer=aac \
-    --enable-demuxer=image2 \
-    --enable-muxer=image2pipe \
-    --enable-muxer=h264 \
-    --enable-muxer=mp4 \
-    --enable-muxer=rtp \
-    --enable-muxer=data \
-    --enable-decoder=mjpeg \
-    --enable-decoder=h264 \
-    --enable-decoder=mpeg4 \
-    --enable-decoder=aac \
-    --enable-decoder=libfdk_aac \
-    --enable-decoder=speex \
-    --enable-encoder=mpeg4 \
-    --enable-encoder=aac \
-    --enable-encoder=libfdk_aac \
-    --enable-encoder=libx264 \
-    --enable-encoder=libspeex \
-    --enable-encoder=mjpeg \
     --enable-hardcoded-tables \
+    --enable-nonfree \
+    --enable-gpl \
+    #--enable-openssl \
+    #--enable-libdav1d \
+    #--enable-libsvtav1 \
+    --enable-libx264 \
+    #--enable-libx265 \
+    #--enable-libvpx \
+    #--enable-libxvid \
+    #--enable-libvidstab \
+    #--enable-libaom \
+    #--enable-libzimg \
+    #--enable-lv2 \
+    #--enable-libopencore_amrnb \
+    #--enable-libopencore_amrwb \
+    #--enable-libmp3lame \
+    #--enable-libopus \
+    #--enable-libvorbis \
+    #--enable-libtheora \
+    --enable-libfdk-aac \
+    #--enable-libwebp \
+    #--enable-libsrt \
+    #--enable-libvpl \
+    --enable-libspeex \
+    #--enable-vaapi \
+    --disable-ffnvcodec \
+    #--enable-amf \
+    --disable-debug \
+    --disable-shared \
+    --enable-pthreads \
+    --enable-static \
+    --enable-version3 \
     ${FFMPEG_EXTRA_OPTIONS} \
     && make -j 4 \
     && make install
@@ -109,25 +94,23 @@ RUN apk update \
     && apk upgrade \
     && apk add tzdata \
     && apk add fdk-aac \
-    && apk add speex
+    && apk add speex \
+    && apk add nano
 
 # working directory inside the container
 WORKDIR /opt/Nest_accfactory
+RUN mkdir ${WORKDIR}/dist
 
 # copy require files into container image folder
 COPY package.json ./
-COPY Nest_accfactory.js ./
-COPY Nest_camera_*.jpg ./
-COPY Nest_camera_*.h264 ./
-COPY HomeKitHistory.js ./
-COPY HomeKitDevice.js ./
-COPY nexusstreamer.js ./
-COPY protobuf/ ./protobuf/
-COPY --from=builder /build/ffmpeg-${FFMPEG_VERSION}/ffmpeg ./
+COPY src/*.js ./dist/
+COPY src/res/ ./dist/res/
+COPY src/protobuf/ ./dist/protobuf/
+COPY --from=builder /build/ffmpeg-${FFMPEG_VERSION}/ffmpeg ./dist
 
 # perform installation based on details in package.json
 RUN npm update -g \
-    && npm install
+    && npm install --omit=dev
 
 # tidy up install by removing sample accessories from hap-nodejs
 RUN rm -rf ./node_modules/hap-nodejs/dist/accessories
@@ -139,7 +122,7 @@ RUN chown -R node:node /opt/Nest_accfactory
 
 # run the accessory, using non-root user, "node"
 USER node
-ENTRYPOINT ["node", "/opt/Nest_accfactory/Nest_accfactory.js", "/opt/Nest_accfactory/conf/Nest_config.json"]
+ENTRYPOINT ["node", "/opt/Nest_accfactory/dist/index.js", "/opt/Nest_accfactory/conf/Nest_config.json"]
 
 # labels for the container
 LABEL org.opencontainers.image.title="Nest_accfactory"

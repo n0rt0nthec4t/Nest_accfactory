@@ -2,9 +2,9 @@
   
 # Nest_accfactory
   
-  <a href="https://github.com/n0rt0nthec4t/Nest_accfactory/releases"><img title="version" src="https://img.shields.io/github/release/n0rt0nthec4t/Nest_accfactory.svg?include_prereleases" ></a>
-    <a href="https://github.com/n0rt0nthec4t/Nest_accfactory/releases"><img title="date" src="https://img.shields.io/github/release-date/n0rt0nthec4t/Nest_accfactory" ></a>
-  <a href="https://github.com/n0rt0nthec4t/Nest_accfactory/releases"><img title="nodejs version" src="https://img.shields.io/github/package-json/dependency-version/n0rt0nthec4t/Nest_accfactory/hap-nodejs"> </a>
+[![release](https://img.shields.io/github/release/n0rt0nthec4t/Nest_accfactory.svg?include_prereleases)](https://github.com/n0rt0nthec4t/Nest_accfactory/releases)
+[![version](https://img.shields.io/github/release-date/n0rt0nthec4t/Nest_accfactory)](https://github.com/n0rt0nthec4t/Nest_accfactory/releases)
+[![Donate](https://badgen.net/badge/donate/paypal/yellow)](https://paypal.me/n0rt0nthec4t)
   
 </span>
 
@@ -26,13 +26,13 @@ The accessory supports connection to Nest using a Nest account OR a Google (migr
 
 ## Configuration
 
-### Obtaining a Session Token for a Nest Account
+### Obtaining a Access Token for a Nest Account
 
 If you have a Nest account, you will need to obtain an access token from the Nest web app. Simply go to https://home.nest.com in your browser and log in. Once that's done, go to https://home.nest.com/session in your browser, and you will see a long string that looks like this:
 
 {"2fa_state":"enrolled","access_token":"XXX", ...}
 
-Simply set "SessionToken" in your Nest_config.json file to the value of "access_token" near the start of the string (the XXX), which will be a long sequence of letters, numbers and punctuation beginning with b. There may be other keys labelled access_token further along in the string - please ignore these.
+Simply set "access token" in your Nest_config.json file to the value of "access_token" near the start of the string (the XXX), which will be a long sequence of letters, numbers and punctuation beginning with b. There may be other keys labelled access_token further along in the string - please ignore these.
 
 **Do not log out of home.nest.com, as this will invalidate your credentials. Just close the browser tab**
 
@@ -68,7 +68,11 @@ Nest_config.json is the configuration file where various options can be. An exam
 
 ```
 {
-    "SessionToken" : "<nest session token>",
+    "Connections" : {
+        "Nest" : {
+            "access_token" : "<nest access token>"
+        },
+    },
     "HKSV" : true
 }
 ```
@@ -77,9 +81,11 @@ or
 
 ```
 {
-    "GoogleToken" : {
-        "issuetoken" : "<google issue token url>",
-        "cookie" : "<google cookie>"
+    "Connections" : {
+        "Google" : {
+            "issuetoken" : "<google issue token url>",
+            "cookie" : "<google cookie>"
+        },
     },
     "HKSV" : true
 }
@@ -89,7 +95,11 @@ An advanced configuration example is below
 
 ```
 {
-    "SessionToken" : "<nest session token>",
+    "Connections" : {
+        "Nest" : {
+            "access_token" : "<nest session token>"
+        },
+    },
     "HKSV" : false,
     "SERIAL1" : {
         "Exclude" : true
@@ -107,16 +117,12 @@ The options available are within the configuration file are listed below. Some o
 
 | Option                     | Values                  | Description                                                                               | Global/Local |
 |----------------------------|-------------------------|-------------------------------------------------------------------------------------------|--------------|
-| GoogleToken                |                         | Google cookie token object {"issuetoken": "xxx", "cookie": "xxx" }                        | global       |
-| SessionToken               |                         | Nest session token. Obtain from home.nest.com/session                                     | global       |
-| FieldTest                  | true, false             | Enables the use of FieldTest accounts                                                     | global       |             
+| Connections                | Nest, Google            | Object list of connections to use as per examples above                                   | global       |             
 | EveApp                     | true, false             | Integration with Evehome App. Default is true                                             | global/local |
 | HomeKitCode                |                         | HomeKit pairing code in format of "xxx-xx-xxx". Default is 031-45-154                     | global/local |
 | Weather                    | true, false             | Creates a "virtual" weather station using Nest weather data. Default is off               | global       |
-| Debug                      | true, false             | Turns debugging on or off. Default is off                                                 | global       |
 | mDNS                       | avahi, bonjour, ciao    | mDNS advertiser library to use. Default is bonjour                                        | global       |
 | HKSV                       | true, false             | Turns HomeKit Secure Video on or off for doorbells and/cameras. Default is off.           | global/local |
-| HKSVPreBuffer              | seconds or milliseconds | Amount of time the pre-buffer for HomeKit Secure Video holds data. Default is 15 seconds  | global/local |
 | MotionCooldown             | seconds or milliseconds | Ignore motion detection for this time once triggered. Default is 1 minute                 | global/local |
 | PersonCooldown             | seconds or milliseconds | Ignore person detection for this time once triggered (Non HKSV only) Default is 2 minutes | global/local |
 | DoorbellCooldown           | seconds or milliseconds | Ignore doorbell button pressed for this time once triggered Default is 1 minute           | global/local |
@@ -133,37 +139,4 @@ If you would like to try this in a containerised version, please check out the [
 ## Caveats
 
 Nest_accfactory is a hobby project of mine, provided as-is, with no warranty whatsoever. I've been running it successfully at my home, but your mileage might vary.
-
-## Changelog
-
-| Version          | Changes                                                                                                                                      |
-|------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| v0.1.5           | Support for Nest devices using protobuf protocols. Mainly Thermostat(s) and Temperature Sensors                                              |
-|                  | Added option to specifiy the HomeKit pairing code                                                                                            |
-|                  | Docker hosted version includes required ffmpeg binary at ffmpeg 7.0                                                                          |
-|                  | Docker hosted version no longer runs using root. This may have side effects of permissions issues with mounted persist folder                |
-| v0.1.4           | Code updates and fixes                                                                                                                       |
-| v0.1.3           | Code updates and fixes                                                                                                                       |
-|                  | Added option to use Nest/Google field test accounts                                                                                          |
-|                  | Removed package dependancy around using ffmpeg-for-homebridge. You'll need to provide your own ffmpeg binary or manually install             |
-|                  | ffmpeg-for-homebridge v0.1.0 (v0.2.0 removes required libraries, specfically libspeex                                                        |
-|                  | Docker hosted version includes required ffmpeg binary at ffmpeg 6.1                                                                          |
-| v0.1.2           | Code updates and fixes                                                                                                                       |
-|                  | Added option to enable HomeKit switch to silence Nest Hello indoor chiming                                                                   |
-| v0.1.1           | Minor code fixes.                                                                                                                            |
-| v0.1.0           | Removes Google refresh token method as nolonger supported. Switches to Google cookie method                                                  |
-| v0.0.9           | Major code rewrite for Nest accessories                                                                                                      |
-|                  | Live streaming for cameras hardcoded to use "copy" for H264 encoder                                                                          |
-|                  | Fixes to maintain connection for HKSV streaming from Nest                                                                                    |
-|                  | Known issue: Audio sync for HKSV recording maybe out due to Nest's use of adaptive framerates. Investigating work around                     |
-| v0.0.8           | H264Encoder config option changes. Will use H264EncoderLive and H264EncoderRecord                                                            |
-| v0.0.7           | Minor code fixes                                                                                                                             |
-| v0.0.6           | H264Encoder option can also be specified for a specific doorbell/camera.                                                                     |
-| v0.0.5           | New option to enabled/disable integration with Eve App in configuration                                                                      |
-|                  | Timestamps in debugging logs                                                                                                                 |
-|                  | Minor code fixes                                                                                                                             |
-| v0.0.4           | Minor code fixes                                                                                                                             |
-| v0.0.3           | Improvements to maintaining network connection for HKSV buffering                                                                            |
-|                  | New option to have a "virtual" weather station using Nest weather data. Enabled in configuration                                             |
-| v0.0.1           | Initial release to this repository                                                                                                           |
 
