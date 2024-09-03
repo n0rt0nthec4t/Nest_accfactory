@@ -3,7 +3,7 @@
 All notable changes to `Nest_accfactory` will be documented in this file. This project tries to adhere to [Semantic Versioning](http://semver.org/).
 
 
-## 0.1.6 ()
+## 0.1.6 (2023-09-03)
 
 - Common code bases between my two projects, homebridge-nest-accfactory and Nest_accfactory
 - Configuration file format has change, but for this version, we'll handle the existing one   
