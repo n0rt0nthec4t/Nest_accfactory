@@ -2,12 +2,9 @@
 // Nest System communications
 // Part of homebridge-nest-accfactory
 //
-// Code version 27/8/2024
+// Code version 3/9/2024
 // Mark Hulskamp
 'use strict';
-
-// Define HAP module requirements
-import HAP from 'hap-nodejs';
 
 // Define external module requirements
 import axios from 'axios';
@@ -38,7 +35,6 @@ const CAMERAZONEPOLLING = 30000; // Camera zones changes polling timer
 const WEATHERPOLLING = 300000; // Weather data polling timer
 const NESTAPITIMEOUT = 10000; // Nest API timeout
 const USERAGENT = 'Nest/5.75.0 (iOScom.nestlabs.jasper.release) os=17.4.1'; // User Agent string
-const FFMPEGLIBARIES = ['libspeex', 'libx264', 'libfdk-aac']; // ffmpeg libraries we require for camera/doorbell(s)
 const FFMPEGVERSION = '6.0'; // Minimum version of ffmpeg we require
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); // Make a defined for JS __dirname
@@ -67,7 +63,7 @@ export default class NestAccfactory {
 
   cachedAccessories = []; // Track restored cached accessories
 
-  // Internal data we use within the platform accessory for various things
+  // Internal data only for this class
   #connections = {}; // Array of confirmed connections, indexed by type
   #rawData = {}; // Cached copy of data from both Rest and Protobuf APIs
   #eventEmitter = new EventEmitter(); // Used for object messaging from this platform
@@ -110,54 +106,77 @@ export default class NestAccfactory {
 
     // Check if a ffmpeg binary exists in current path OR the specific path via configuration
     // If using HomeBridge, the default path will be where the Homebridge user folder is, otherwise the current directory
-    this.config.options.ffmpegPath =
+    this.config.options.ffmpeg = {};
+    this.config.options.ffmpeg['path'] =
       typeof this.config.options?.ffmpegPath === 'string' && this.config.options.ffmpegPath !== ''
         ? this.config.options.ffmpegPath
         : typeof api?.user?.storagePath === 'function'
           ? api.user.storagePath()
           : __dirname;
 
-    if (fs.existsSync(path.resolve(this.config.options.ffmpegPath + '/ffmpeg')) === false) {
+    this.config.options.ffmpeg['version'] = undefined;
+    this.config.options.ffmpeg.libspeex = false;
+    this.config.options.ffmpeg.libx264 = false;
+    this.config.options.ffmpeg.libfdk_aac = false;
+
+    if (fs.existsSync(path.resolve(this.config.options.ffmpeg.path + '/ffmpeg')) === false) {
       if (this?.log?.warn) {
-        this.log.warn('No ffmpeg binary found in "%s"', this.config.options.ffmpegPath);
-        this.log.warn('Streaming/recording video will be unavailable for cameras/doorbells');
+        this.log.warn('No ffmpeg binary found in "%s"', this.config.options.ffmpeg.path);
+        this.log.warn('Streaming and of recording video will be unavailable for cameras/doorbells');
       }
 
       // If we flag ffmpegPath as undefined, no video streaming/record support enabled for camers/doorbells
-      this.config.options.ffmpegPath = undefined;
+      this.config.options.ffmpeg.path = undefined;
     }
 
-    if (fs.existsSync(path.resolve(this.config.options.ffmpegPath + '/ffmpeg')) === true) {
-      let ffmpegProcess = child_process.spawnSync(path.resolve(this.config.options.ffmpegPath + '/ffmpeg'), ['-version'], {
+    if (fs.existsSync(path.resolve(this.config.options.ffmpeg.path + '/ffmpeg')) === true) {
+      let ffmpegProcess = child_process.spawnSync(path.resolve(this.config.options.ffmpeg.path + '/ffmpeg'), ['-version'], {
         env: process.env,
       });
       if (ffmpegProcess.stdout !== null) {
-        // Determine ffmpeg version. Flatten version number into 0.xxxxxxx number for later comparision
-        let ffmpegVersion = parseFloat(
-          ffmpegProcess.stdout
-            .toString()
-            .match(/(?:ffmpeg version:(\d+)\.)?(?:(\d+)\.)?(?:(\d+)\.\d+)(.*?)/gim)[0]
-            .replace(/\./gi, ''),
-        );
+        // Determine ffmpeg version
+        this.config.options.ffmpeg.version = ffmpegProcess.stdout
+          .toString()
+          .match(/(?:ffmpeg version:(\d+)\.)?(?:(\d+)\.)?(?:(\d+)\.\d+)(.*?)/gim)[0];
 
         // Determine what libraries ffmpeg is compiled with
-        let matchingLibraries = 0;
-        FFMPEGLIBARIES.forEach((libraryName) => {
-          if (ffmpegProcess.stdout.toString().includes('--enable-' + libraryName) === true) {
-            matchingLibraries++; // One more found library
-          }
-        });
+        this.config.options.ffmpeg.libspeex = ffmpegProcess.stdout.toString().includes('--enable-libspeex') === true;
+        this.config.options.ffmpeg.libx264 = ffmpegProcess.stdout.toString().includes('--enable-libx264') === true;
+        this.config.options.ffmpeg.libfdk_aac = ffmpegProcess.stdout.toString().includes('--enable-libfdk-aac') === true;
 
-        if (matchingLibraries !== FFMPEGLIBARIES.length || ffmpegVersion < parseFloat(FFMPEGVERSION.toString().replace(/\./gi, ''))) {
-          if (this?.log?.warn) {
-            this.log.warn('ffmpeg binary in "%s" does not meet the minimum requirements.', this.config.options.ffmpegPath);
-            this.log.warn('Minimum binary version is "%s"', FFMPEGVERSION);
-            this.log.warn('Minimum compiled in libraries are "%s"', FFMPEGLIBARIES);
-            this.log.warn('Streaming video and recording will be unavailable');
-          }
+        if (
+          this.config.options.ffmpeg.version.replace(/\./gi, '') < parseFloat(FFMPEGVERSION.toString().replace(/\./gi, '')) ||
+          this.config.options.ffmpeg.libspeex === false ||
+          this.config.options.ffmpeg.libx264 === false ||
+          this.config.options.ffmpeg.libfdk_aac === false
+        ) {
+          this?.log?.warn && this.log.warn('ffmpeg binary in "%s" does not meet the minimum requirements', this.config.options.ffmpeg.path);
+          if (this.config.options.ffmpeg.version.replace(/\./gi, '') < parseFloat(FFMPEGVERSION.toString().replace(/\./gi, ''))) {
+            this?.log?.warn &&
+              this.log.warn(
+                'Minimum binary version is "%s", however the installed version is "%s"',
+                FFMPEGVERSION,
+                this.config.options.ffmpeg.version,
+              );
+            this?.log?.warn && this.log.warn('Stream video/recording from camera/doorbells will be unavailable');
 
-          // If we flag ffmpegPath as undefined, no video streaming/record support
-          this.config.options.ffmpegPath = undefined;
+            this.config.options.ffmpeg.path = undefined; // No ffmpeg since below min version
+          }
+          if (
+            this.config.options.ffmpeg.libspeex === false &&
+            (this.config.options.ffmpeg.libx264 === true && this.config.options.ffmpeg.libfdk_aac) === true
+          ) {
+            this?.log?.warn && this.log.warn('Missing libspeex in ffmpeg binary, two-way audio on camera/doorbells will be unavailable');
+          }
+          if (this.config.options.ffmpeg.libx264 === true && this.config.options.ffmpeg.libfdk_aac === false) {
+            this?.log?.warn && this.log.warn('Missing libfdk_aac in ffmpeg binary, audio from camera/doorbells will be unavailable');
+          }
+          if (this.config.options.ffmpeg.libx264 === false) {
+            this?.log?.warn &&
+              this.log.warn('Missing libx264 in ffmpeg binary, stream video/recording from camera/doorbells will be unavailable');
+
+            this.config.options.ffmpeg.path = undefined; // No ffmpeg since we do not have all the required libraries
+          }
         }
       }
     }
@@ -932,21 +951,21 @@ export default class NestAccfactory {
           if (object.object_key === deviceData.uuid && deviceData.excluded === false) {
             // Device isn't marked as excluded, so create the required HomeKit accessories based upon the device data
             if (deviceData.device_type === NestAccfactory.DeviceType.THERMOSTAT && typeof NestThermostat === 'function') {
-              // Nest Thermostat(s)
+              // Nest Thermostat(s) - Categories.THERMOSTAT = 9
               let tempDevice = new NestThermostat(this.cachedAccessories, this.api, this.log, this.#eventEmitter, deviceData);
-              tempDevice.add('Nest Thermostat', HAP.Categories.THERMOSTAT, true);
+              tempDevice.add('Nest Thermostat', 9, true);
             }
 
             if (deviceData.device_type === NestAccfactory.DeviceType.TEMPSENSOR && typeof NestTemperatureSensor === 'function') {
-              // Nest Temperature Sensor
+              // Nest Temperature Sensor - Categories.SENSOR = 10
               let tempDevice = new NestTemperatureSensor(this.cachedAccessories, this.api, this.log, this.#eventEmitter, deviceData);
-              tempDevice.add('Nest Temperature Sensor', HAP.Categories.SENSOR, true);
+              tempDevice.add('Nest Temperature Sensor', 10, true);
             }
 
             if (deviceData.device_type === NestAccfactory.DeviceType.SMOKESENSOR && typeof NestProtect === 'function') {
-              // Nest Protect(s)
+              // Nest Protect(s) - Categories.SENSOR = 10
               let tempDevice = new NestProtect(this.cachedAccessories, this.api, this.log, this.#eventEmitter, deviceData);
-              tempDevice.add('Nest Protect', HAP.Categories.SENSOR, true);
+              tempDevice.add('Nest Protect', 10, true);
             }
 
             if (
@@ -956,12 +975,14 @@ export default class NestAccfactory {
             ) {
               let accessoryName = 'Nest ' + deviceData.model.replace(/\s*(?:\([^()]*\))/gi, '');
               if (deviceData.device_type === NestAccfactory.DeviceType.CAMERA) {
+                // Nest Camera(s) - Categories.IP_CAMERA = 17
                 let tempDevice = new NestCamera(this.cachedAccessories, this.api, this.log, this.#eventEmitter, deviceData);
-                tempDevice.add(accessoryName, HAP.Categories.IP_CAMERA, true);
+                tempDevice.add(accessoryName, 17, true);
               }
               if (deviceData.device_type === NestAccfactory.DeviceType.DOORBELL) {
+                // Nest Doorbell(s) - Categories.VIDEO_DOORBELL = 18
                 let tempDevice = new NestDoorbell(this.cachedAccessories, this.api, this.log, this.#eventEmitter, deviceData);
-                tempDevice.add(accessoryName, HAP.Categories.VIDEO_DOORBELL, true);
+                tempDevice.add(accessoryName, 18, true);
               }
 
               // Setup polling loop for camera/doorbell zone data if not already created.
@@ -1197,9 +1218,9 @@ export default class NestAccfactory {
             }
 
             if (deviceData.device_type === NestAccfactory.DeviceType.WEATHER && typeof NestWeather === 'function') {
-              // Nest 'Virtual' weather station
+              // Nest 'Virtual' weather station - Categories.SENSOR = 10
               let tempDevice = new NestWeather(this.cachedAccessories, this.api, this.log, this.#eventEmitter, deviceData);
-              tempDevice.add('Nest Weather', HAP.Categories.SENSOR, true);
+              tempDevice.add('Nest Weather', 10, true);
 
               // Setup polling loop for weather data if not already created
               if (typeof this.#rawData[object.object_key]?.timers?.weather === 'undefined') {
@@ -1332,6 +1353,7 @@ export default class NestAccfactory {
       'nest.resource.NestAgateDisplayResource',
       'nest.resource.NestOnyxResource',
       'google.resource.GoogleZirconium1Resource',
+      'google.resource.GoogleBismuth1Resource',
     ];
     Object.entries(this.#rawData)
       .filter(
@@ -1351,6 +1373,9 @@ export default class NestAccfactory {
             RESTTypeData.model = 'Thermostat';
             if (value.value.device_info.typeName === 'nest.resource.NestLearningThermostat3Resource') {
               RESTTypeData.model = 'Learning Thermostat (3rd Gen)';
+            }
+            if (value.value.device_info.typeName === 'google.resource.GoogleBismuth1Resource') {
+              RESTTypeData.model = 'Learning Thermostat (4th Gen)';
             }
             if (value.value.device_info.typeName === 'nest.resource.NestAgateDisplayResource') {
               RESTTypeData.model = 'Thermostat E';
@@ -2285,14 +2310,14 @@ export default class NestAccfactory {
               : 60;
           tempDevice.motionCooldown =
             typeof this.config?.devices?.[tempDevice.serial_number]?.motionCooldown === 'number'
-              ? this.config.devices[tempDevice.serial_number].personCooldown
-              : 120;
-          tempDevice.personCooldown =
-            typeof this.config?.devices?.[tempDevice.serial_number]?.personCooldown === 'number'
               ? this.config.devices[tempDevice.serial_number].motionCooldown
               : 60;
+          tempDevice.personCooldown =
+            typeof this.config?.devices?.[tempDevice.serial_number]?.personCooldown === 'number'
+              ? this.config.devices[tempDevice.serial_number].personCooldown
+              : 120;
           tempDevice.chimeSwitch = this.config?.devices?.[tempDevice.serial_number]?.chimeSwitch === true; // Config option for chime switch
-          tempDevice.ffmpegPath = this.config.options.ffmpegPath; // path to ffmpeg. No ffmpeg = undefined
+          tempDevice.ffmpeg = this.config.options.ffmpeg; // ffmpeg details, path, libraries. No ffmpeg = undefined
           (tempDevice.maxStreams =
             typeof this.config.options?.maxStreams === 'number' ? this.config.options.maxStreams : this.deviceData.hksv === true ? 1 : 2),
             (devices[tempDevice.serial_number] = tempDevice); // Store processed device
