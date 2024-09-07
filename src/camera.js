@@ -1,7 +1,7 @@
 // Nest Cameras
 // Part of homebridge-nest-accfactory
 //
-// Code version 3/9/2024
+// Code version 7/9/2024
 // Mark Hulskamp
 'use strict';
 
@@ -17,23 +17,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Define external module requirements
-import axios from 'axios';
-
 // Define our modules
 import HomeKitDevice from './HomeKitDevice.js';
-import NexusStreamer from './nexusstreamer.js';
+import NexusTalk from './nexustalk.js';
+//import WebRTC from './webrtc.js';
+let WebRTC = undefined;
 
 const CAMERAOFFLINEJPGFILE = 'Nest_camera_offline.jpg'; // Camera offline jpg image file
 const CAMERAOFFJPGFILE = 'Nest_camera_off.jpg'; // Camera video off jpg image file
 const MP4BOX = 'mp4box'; // MP4 box fragement event for HKSV recording
-const USERAGENT = 'Nest/5.75.0 (iOScom.nestlabs.jasper.release) os=17.4.1'; // User Agent string
 const SNAPSHOTCACHETIMEOUT = 30000; // Timeout for retaining snapshot image (in milliseconds)
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); // Make a defined for JS __dirname
 
 export default class NestCamera extends HomeKitDevice {
   controller = undefined; // HomeKit Camera/Doorbell controller service
-  NexusStreamer = undefined; // Object for the NexusTalk Streamer
+  streamer = undefined; // Streamer object for live/recording stream
   motionServices = undefined; // Object of Camera/Doorbell motion sensor(s)
   operatingModeService = undefined; // Link to camera/doorbell operating mode service
   personTimer = undefined; // Cooldown timer for person/face events
@@ -82,16 +80,41 @@ export default class NestCamera extends HomeKitDevice {
     // Setup additional services/characteristics after we have a controller created
     this.createCameraServices();
 
-    // Setup our streaming object
+    // Depending on the streaming profiles that the camera supports, this will be either nexustalk or webrtc
     // We'll also start pre-buffering if required for HKSV
-    this.NexusStreamer = new NexusStreamer(this.deviceData, {
-      log: this.log,
-      buffer:
-        this.deviceData.hksv === true &&
-        this?.controller?.recordingManagement?.recordingManagementService !== undefined &&
-        this.controller.recordingManagement.recordingManagementService.getCharacteristic(this.hap.Characteristic.Active).value ===
-          this.hap.Characteristic.Active.ACTIVE,
-    });
+    if (this.deviceData.streaming_protocols.includes('PROTOCOL_WEBRTC') === true && this.streamer === undefined && WebRTC !== undefined) {
+      this.streamer = new WebRTC(this.deviceData, {
+        log: this.log,
+        buffer:
+          this.deviceData.hksv === true &&
+          this?.controller?.recordingManagement?.recordingManagementService !== undefined &&
+          this.controller.recordingManagement.recordingManagementService.getCharacteristic(this.hap.Characteristic.Active).value ===
+            this.hap.Characteristic.Active.ACTIVE,
+      });
+    }
+
+    if (
+      this.deviceData.streaming_protocols.includes('PROTOCOL_NEXUSTALK') === true &&
+      this.streamer === undefined &&
+      NexusTalk !== undefined
+    ) {
+      this.streamer = new NexusTalk(this.deviceData, {
+        log: this.log,
+        buffer:
+          this.deviceData.hksv === true &&
+          this?.controller?.recordingManagement?.recordingManagementService !== undefined &&
+          this.controller.recordingManagement.recordingManagementService.getCharacteristic(this.hap.Characteristic.Active).value ===
+            this.hap.Characteristic.Active.ACTIVE,
+      });
+    }
+
+    if (this.streamer === undefined) {
+      this?.log?.error &&
+        this.log.error(
+          'No suitable streaming protocol is present for "%s". Streaming and recording will be unavailable',
+          this.deviceData.description,
+        );
+    }
 
     // Setup linkage to EveHome app if configured todo so
     if (
@@ -107,7 +130,9 @@ export default class NestCamera extends HomeKitDevice {
     // Create extra details for output
     let postSetupDetails = [];
     this.deviceData.hksv === true &&
-      postSetupDetails.push('HomeKit Secure Video' + (this.NexusStreamer.isBuffering() === true ? ' and recording buffer' : ''));
+      postSetupDetails.push(
+        'HomeKit Secure Video support' + (this.streamer?.isBuffering() === true ? ' and recording buffer started' : ''),
+      );
     return postSetupDetails;
   }
 
@@ -117,9 +142,7 @@ export default class NestCamera extends HomeKitDevice {
     this.personTimer = clearTimeout(this.personTimer);
     this.snapshotTimer = clearTimeout(this.snapshotTimer);
 
-    if (this.NexusStreamer !== undefined && this.NexusStreamer.isBuffering() === true) {
-      this.NexusStreamer.stopBuffering(); // Stop any buffering
-    }
+    this.streamer?.isBuffering() === true && this.streamer.stopBuffering();
 
     // Stop any on-going HomeKit sessions, either live or recording
     // We'll terminate any ffmpeg, rtpSpliter etc processes
@@ -136,15 +159,18 @@ export default class NestCamera extends HomeKitDevice {
     });
 
     // Remove any motion services we created
-    this.motionServices.forEach((service) => {
+    Object.values(this.motionServices).forEach((service) => {
       service.updateCharacteristic(this.hap.Characteristic.MotionDetected, false);
       this.accessory.removeService(service);
     });
+
+    // Remove the camera controller
     this.accessory.removeController(this.controller);
+
     this.operatingModeService = undefined;
     this.#hkSessions = undefined;
     this.motionServices = undefined;
-    this.NexusStreamer = undefined;
+    this.streamer = undefined;
     this.controller = undefined;
   }
 
@@ -167,6 +193,15 @@ export default class NestCamera extends HomeKitDevice {
       // Should only be recording if motion detected.
       // Sometimes when starting up, HAP-nodeJS or HomeKit triggers this even when motion isn't occuring
       this?.log?.debug && this.log.debug('Received request to commence recording for "%s" however we have not detected any motion');
+      return;
+    }
+
+    if (this.streamer === undefined) {
+      this?.log?.error &&
+        this.log.error(
+          'Received request to start recording for "%s" however we do not any associated streaming protocol supported',
+          this.deviceData.description,
+        );
       return;
     }
 
@@ -316,11 +351,12 @@ export default class NestCamera extends HomeKitDevice {
       }
     });
 
-    this.NexusStreamer.startRecordStream(
-      sessionID,
-      this.#hkSessions[sessionID].ffmpeg.stdin,
-      this.#hkSessions[sessionID]?.ffmpeg?.stdio?.[3] ? this.#hkSessions[sessionID].ffmpeg.stdio[3] : null,
-    );
+    this.streamer !== undefined &&
+      this.streamer.startRecordStream(
+        sessionID,
+        this.#hkSessions[sessionID].ffmpeg.stdin,
+        this.#hkSessions[sessionID]?.ffmpeg?.stdio?.[3] ? this.#hkSessions[sessionID].ffmpeg.stdio[3] : null,
+      );
 
     this?.log?.info &&
       this.log.info(
@@ -369,7 +405,8 @@ export default class NestCamera extends HomeKitDevice {
   }
 
   closeRecordingStream(sessionID, closeReason) {
-    this.NexusStreamer.stopRecordStream(sessionID); // Stop the associated recording stream
+    // Stop the associated recording stream
+    this.streamer !== undefined && this.streamer.stopRecordStream(sessionID);
 
     if (typeof this.#hkSessions?.[sessionID] === 'object') {
       if (this.#hkSessions[sessionID]?.ffmpeg !== undefined) {
@@ -385,7 +422,7 @@ export default class NestCamera extends HomeKitDevice {
 
     // Log recording finished messages depending on reason
     if (closeReason === this.hap.HDSProtocolSpecificErrorReason.NORMAL) {
-      this?.log?.success && this.log.success('Completed recording from "%s"', this.deviceData.description);
+      this?.log?.info && this.log.info('Completed recording from "%s"', this.deviceData.description);
     } else {
       this?.log?.warn &&
         this.log.warn(
@@ -397,26 +434,16 @@ export default class NestCamera extends HomeKitDevice {
   }
 
   updateRecordingActive(enableRecording) {
-    // We'll use the change here to determine if we start/stop any buffering.
-    if (this.NexusStreamer === undefined) {
-      return;
-    }
-
-    if (enableRecording === true) {
+    if (enableRecording === true && this.streamer?.isBuffering() === false) {
       // Start a buffering stream for this camera/doorbell. Ensures motion captures all video on motion trigger
       // Required due to data delays by on prem Nest to cloud to HomeKit accessory to iCloud etc
       // Make sure have appropriate bandwidth!!!
       this?.log?.info && this.log.info('Recording was turned on for "%s"', this.deviceData.description);
-
-      if (this.NexusStreamer.isBuffering() === false) {
-        this.NexusStreamer.startBuffering();
-      }
+      this.streamer.startBuffering();
     }
 
-    if (enableRecording === false) {
-      if (this.NexusStreamer.isBuffering() === true) {
-        this.NexusStreamer.stopBuffering();
-      }
+    if (enableRecording === false && this.streamer?.isBuffering() === true) {
+      this.streamer.stopBuffering();
       this?.log?.warn && this.log.warn('Recording was turned off for "%s"', this.deviceData.description);
     }
   }
@@ -433,80 +460,16 @@ export default class NestCamera extends HomeKitDevice {
     let imageBuffer = undefined;
 
     if (this.deviceData.streaming_enabled === true && this.deviceData.online === true) {
-      if (
-        this.deviceData.hksv === false &&
-        typeof this.snapshotEvent === 'object' &&
-        this.snapshotEvent.type !== '' &&
-        this.snapshotEvent.done === false
-      ) {
-        // Grab event snapshot from camera/doorbell stream for a non-HKSV camera
-        let request = {
-          method: 'get',
-          url:
-            this.deviceData.nexus_api_http_server_url +
-            '/event_snapshot/' +
-            this.deviceData.uuid.split('.')[1] +
-            '/' +
-            this.snapshotEvent.id +
-            '?crop_type=timeline&width=' +
-            snapshotRequestDetails.width +
-            '&cachebuster=' +
-            Math.floor(Date.now() / 1000),
-          headers: {
-            'User-Agent': USERAGENT,
-            accept: '*/*',
-            [this.deviceData.apiAccess.key]: this.deviceData.apiAccess.value + this.deviceData.apiAccess.token,
-          },
-          responseType: 'arraybuffer',
-          timeout: 3000,
-        };
-        await axios(request)
-          .then((response) => {
-            if (typeof response.status !== 'number' || response.status !== 200) {
-              throw new Error('Nest Camera API snapshot failed with error');
-            }
+      let response = await this.get({ camera_snapshot: '' });
+      if (Buffer.isBuffer(response?.camera_snapshot) === true) {
+        imageBuffer = response.camera_snapshot;
+        this.lastSnapshotImage = response.camera_snapshot;
 
-            this.snapshotEvent.done = true; // Successfully got the snapshot for the event
-            imageBuffer = response.data;
-          })
-          // eslint-disable-next-line no-unused-vars
-          .catch((error) => {
-            // Empty
-          });
-      }
-      if (imageBuffer === undefined) {
-        // Camera/doorbell image buffer is empty still, so do direct grab from Nest API
-        let request = {
-          method: 'get',
-          url: this.deviceData.nexus_api_http_server_url + '/get_image?uuid=' + this.deviceData.uuid.split('.')[1],
-          // + '&width=' + snapshotRequestDetails.width,
-          headers: {
-            'User-Agent': USERAGENT,
-            accept: '*/*',
-            [this.deviceData.apiAccess.key]: this.deviceData.apiAccess.value + this.deviceData.apiAccess.token,
-          },
-          responseType: 'arraybuffer',
-          timeout: 3000,
-        };
-        await axios(request)
-          .then((response) => {
-            if (typeof response.status !== 'number' || response.status !== 200) {
-              throw new Error('Nest Camera API snapshot failed with error');
-            }
-
-            imageBuffer = response.data;
-            this.lastSnapshotImage = response.data;
-
-            // Keep this snapshot image cached for a certain period
-            this.snapshotTimer = clearTimeout(this.snapshotTimer);
-            this.snapshotTimer = setTimeout(() => {
-              this.lastSnapshotImage = undefined;
-            }, SNAPSHOTCACHETIMEOUT);
-          })
-          // eslint-disable-next-line no-unused-vars
-          .catch((error) => {
-            // Empty
-          });
+        // Keep this snapshot image cached for a certain period
+        this.snapshotTimer = clearTimeout(this.snapshotTimer);
+        this.snapshotTimer = setTimeout(() => {
+          this.lastSnapshotImage = undefined;
+        }, SNAPSHOTCACHETIMEOUT);
       }
     }
 
@@ -596,7 +559,13 @@ export default class NestCamera extends HomeKitDevice {
 
   async handleStreamRequest(request, callback) {
     // called when HomeKit asks to start/stop/reconfigure a camera/doorbell stream
-    if (this.NexusStreamer === undefined) {
+    if (this.streamer === undefined) {
+      this?.log?.error &&
+        this.log.error(
+          'Received request to start live video for "%s" however we do not any associated streaming protocol supported',
+          this.deviceData.description,
+        );
+
       if (typeof callback === 'function') {
         callback(); // do callback if defined
       }
@@ -689,7 +658,7 @@ export default class NestCamera extends HomeKitDevice {
           '&pkt_size=188';
       }
 
-      // Start our ffmpeg streaming process and stream from nexus
+      // Start our ffmpeg streaming process and stream from our streamer
       let ffmpegStreaming = child_process.spawn(path.resolve(this.deviceData.ffmpeg.path + '/ffmpeg'), commandLine.split(' '), {
         env: process.env,
         stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
@@ -844,13 +813,14 @@ export default class NestCamera extends HomeKitDevice {
           ffmpegAudioTalkback?.stdout ? 'with two-way audio' : '',
         );
 
-      // Start the stream from nexus
-      this.NexusStreamer.startLiveStream(
-        request.sessionID,
-        ffmpegStreaming.stdin,
-        ffmpegStreaming?.stdio?.[3] ? ffmpegStreaming.stdio[3] : null,
-        ffmpegAudioTalkback?.stdout ? ffmpegAudioTalkback.stdout : null,
-      );
+      // Start the appropirate streamer
+      this.streamer !== undefined &&
+        this.streamer.startLiveStream(
+          request.sessionID,
+          ffmpegStreaming.stdin,
+          ffmpegStreaming?.stdio?.[3] ? ffmpegStreaming.stdio[3] : null,
+          ffmpegAudioTalkback?.stdout ? ffmpegAudioTalkback.stdout : null,
+        );
 
       // Store our ffmpeg sessions
       ffmpegStreaming && this.#hkSessions[request.sessionID].ffmpeg.push(ffmpegStreaming); // Store ffmpeg process ID
@@ -860,7 +830,7 @@ export default class NestCamera extends HomeKitDevice {
     }
 
     if (request.type === this.hap.StreamRequestTypes.STOP && typeof this.#hkSessions[request.sessionID] === 'object') {
-      this.NexusStreamer.stopLiveStream(request.sessionID);
+      this.streamer !== undefined && this.streamer.stopLiveStream(request.sessionID);
 
       // Close off any running ffmpeg and/or splitter processes we created
       if (typeof this.#hkSessions[request.sessionID]?.rtpSplitter?.close === 'function') {
@@ -917,7 +887,7 @@ export default class NestCamera extends HomeKitDevice {
       // 1 = Disabled
       this.operatingModeService.updateCharacteristic(
         this.hap.Characteristic.ManuallyDisabled,
-        deviceData.streaming_enabled === true && deviceData.online === true ? 0 : 1,
+        deviceData.streaming_enabled === true ? 0 : 1,
       );
 
       if (deviceData.has_statusled === true && typeof deviceData.statusled_brightness === 'number') {
@@ -967,10 +937,8 @@ export default class NestCamera extends HomeKitDevice {
       this.controller.setSpeakerMuted(deviceData.audio_enabled === false ? true : false);
     }
 
-    if (this?.NexusStreamer !== undefined) {
-      // Notify the Nexus object of any camera detail updates that it might need to know about
-      this.NexusStreamer.update(deviceData);
-    }
+    // Notify our associated streamers about any data changes
+    this.streamer !== undefined && this.streamer.update(deviceData);
 
     // Process alerts, the most recent alert is first
     // For HKSV, we're interested motion events
@@ -979,17 +947,8 @@ export default class NestCamera extends HomeKitDevice {
       // Handle motion event
       // For a HKSV enabled camera, we will use this to trigger the starting of the HKSV recording if the camera is active
       if (event.types.includes('motion') === true) {
-        if (this.motionTimer === undefined) {
-          this?.log?.info &&
-            this.log.info(
-              'Motion detected at "%s" %s',
-              this.deviceData.description,
-              this.controller?.recordingManagement?.recordingManagementService !== undefined &&
-                this.controller.recordingManagement.recordingManagementService.getCharacteristic(this.hap.Characteristic.Active).value ===
-                  this.hap.Characteristic.Active.INACTIVE
-                ? 'but recording is disabled'
-                : '',
-            );
+        if (this.motionTimer === undefined && (this.deviceData.hksv === false || this.streamer === undefined)) {
+          this?.log?.info && this.log.info('Motion detected at "%s"', this.deviceData.description);
         }
 
         event.zone_ids.forEach((zoneID) => {
@@ -1037,7 +996,7 @@ export default class NestCamera extends HomeKitDevice {
       if (event.types.includes('person') === true || event.types.includes('face') === true) {
         if (this.personTimer === undefined) {
           // We don't have a person cooldown timer running, so we can process the 'person'/'face' event
-          if (this?.log?.info && this.deviceData.hksv === false) {
+          if (this?.log?.info && (this.deviceData.hksv === false || this.streamer === undefined)) {
             // We'll only log a person detected event if HKSV is disabled
             this.log.info('Person detected at "%s"', this.deviceData.description);
           }
@@ -1045,21 +1004,12 @@ export default class NestCamera extends HomeKitDevice {
           // Cooldown for person being detected
           // Start this before we process further
           this.personTimer = setTimeout(() => {
-            this.snapshotEvent = undefined; // Clear snapshot event image after timeout
             this.personTimer = undefined; // No person timer active
           }, this.deviceData.personCooldown * 1000);
 
-          // Check which zone triggered the person alert and update associated motion sensor(s)
-          this.snapshotEvent = {
-            type: 'person',
-            time: event.playback_time,
-            id: event.id,
-            done: false,
-          };
-
           if (event.types.includes('motion') === false) {
             // If person/face events doesn't include a motion event, add in here
-            // This will handle all the motion trigging stuff
+            // This will handle all the motion triggering stuff
             event.types.push('motion');
           }
         }
