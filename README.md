@@ -16,11 +16,11 @@ This is a HAP-NodeJS accessory I have developed to allow Nest devices to be used
 
 The following Nest devices are supported
 
-* Nest Thermostats (Gen 1, Gen 2, Gen 3, E)
-* Nest Protects (Gen 1, Gen 2)
-* Nest Temp Sensors
-* Nest Cameras (Cam Indoor, IQ Indoor, Outdoor, IQ Outdoor)
-* Nest Hello (Wired Gen 1)
+* Nest Thermostats (1st gen, 2nd gen, 3rd gen, E, 2020 mirror edition, 4th gen)
+* Nest Protects (1st and 2nd gen)
+* Nest Temp Sensors (1st gen)
+* Nest Cameras (Cam Indoor, IQ Indoor, Outdoor, IQ Outdoor, Cam with Floodlight)
+* Nest Doorbells (wired 1st gen)
 
 The accessory supports connection to Nest using a Nest account OR a Google (migrated Nest account) account.
 

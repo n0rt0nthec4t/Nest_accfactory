@@ -5,18 +5,18 @@
 //
 // The following Nest devices are supported
 //
-// Nest Thermostats (Gen 1, Gen 2, Gen 3, E, Mirrored 2020)
-// Nest Protects (Gen 1, Gen 2)
-// Nest Temperature Sensors
-// Nest Cameras (Cam Indoor, IQ Indoor, Outdoor, IQ Outdoor)
-// Nest Hello (Wired Gen 1)
+// Nest Thermostats (1st gen, 2nd gen, 3rd gen, E, 2020 mirror edition, 4th gen)
+// Nest Protects (1st and 2nd gen)
+// Nest Temp Sensors (1st gen)
+// Nest Cameras (Cam Indoor, IQ Indoor, Outdoor, IQ Outdoor, Cam with Floodlight)
+// Nest Doorbells (wired 1st gen)
 //
 // The accessory supports authentication to Nest/Google using either a Nest account OR Google (migrated Nest account) account.
 // 'preliminary' support for using FieldTest account types also.
 //
 // Supports both Nest REST and protobuf APIs for communication to Nest systems
 //
-// Code version 20/8/2024
+// Code version 11/9/2024
 // Mark Hulskamp
 'use strict';
 
@@ -225,7 +225,7 @@ function loadConfiguration(filename) {
             config.devices[key]['personCooldown'] = value;
           }
           if (subKey.startsWith('External') === true && typeof value === 'string' && value !== '') {
-            config.devices[key]['external' + subKey.substring(6)] = value;
+            config.devices[key]['external' + subKey.substring(8)] = value;
           }
         });
       }
