@@ -2,7 +2,7 @@
     "displayName": "Nest Accfactory",
     "name": "nest-accfactory",
     "homepage": "https://github.com/n0rt0nthec4t/Nest_accfactory",
-    "version": "0.1.7-alpha.1",
+    "version": "0.1.7-alpha.3",
     "description": "HomeKit integration for Nest devices using HAP-NodeJS library",
     "license": "Apache-2.0",
     "author": "n0rt0nthec4t",

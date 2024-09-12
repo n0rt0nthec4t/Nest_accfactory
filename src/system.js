@@ -778,51 +778,49 @@ export default class NestAccfactory {
               try {
                 // Attempt to decode the Protobuf message(s) we extracted from the stream and get a JSON object representation
                 decodedMessage = this.#connections[connectionUUID].protobufRoot
-                  .lookup('nest.messages.StreamBody')
+                  .lookup('nestlabs.gateway.v2.ObserveResponse')
                   .decode(buffer.subarray(0, messageSize))
                   .toJSON();
-                if (typeof decodedMessage?.message !== 'object') {
-                  decodedMessage.message = [];
-                }
-                if (typeof decodedMessage?.message[0]?.get !== 'object') {
-                  decodedMessage.message[0].get = [];
-                }
-                if (typeof decodedMessage?.message[0]?.resourceMetas !== 'object') {
-                  decodedMessage.message[0].resourceMetas = [];
-                }
 
                 // Tidy up our received messages. This ensures we only have one status for the trait in the data we process
                 // We'll favour a trait with accepted status over the same with confirmed status
-                let notAcceptedStatus = decodedMessage.message[0].get.filter((trait) => trait.stateTypes.includes('ACCEPTED') === false);
-                let acceptedStatus = decodedMessage.message[0].get.filter((trait) => trait.stateTypes.includes('ACCEPTED') === true);
-                let difference = acceptedStatus.map((trait) => trait.traitId.resourceId + '/' + trait.traitId.traitLabel);
-                decodedMessage.message[0].get =
-                  ((notAcceptedStatus = notAcceptedStatus.filter(
-                    (trait) => difference.includes(trait.traitId.resourceId + '/' + trait.traitId.traitLabel) === false,
-                  )),
-                  [...notAcceptedStatus, ...acceptedStatus]);
-
+                if (decodedMessage?.observeResponse?.[0]?.traitStates !== undefined) {
+                  let notAcceptedStatus = decodedMessage.observeResponse[0].traitStates.filter(
+                    (trait) => trait.stateTypes.includes('ACCEPTED') === false,
+                  );
+                  let acceptedStatus = decodedMessage.observeResponse[0].traitStates.filter(
+                    (trait) => trait.stateTypes.includes('ACCEPTED') === true,
+                  );
+                  let difference = acceptedStatus.map((trait) => trait.traitId.resourceId + '/' + trait.traitId.traitLabel);
+                  decodedMessage.observeResponse[0].traitStates =
+                    ((notAcceptedStatus = notAcceptedStatus.filter(
+                      (trait) => difference.includes(trait.traitId.resourceId + '/' + trait.traitId.traitLabel) === false,
+                    )),
+                    [...notAcceptedStatus, ...acceptedStatus]);
+                }
                 // We'll use the resource status message to look for structure and/or device removals
                 // We could also check for structure and/or device additions here, but we'll want to be flagged
                 // that a device is 'ready' for use before we add in. This data is populated in the trait data
-                decodedMessage.message[0].resourceMetas.map(async (resource) => {
-                  if (
-                    resource.status === 'REMOVED' &&
-                    (resource.resourceId.startsWith('STRUCTURE_') || resource.resourceId.startsWith('DEVICE_'))
-                  ) {
-                    // We have the removal of a 'home' and/ device
-                    deviceChanges.push({ object_key: resource.resourceId, change: 'removed' });
-                  }
-                });
+                if (decodedMessage?.observeResponse?.[0]?.resourceMetas !== undefined) {
+                  decodedMessage.observeResponse[0].resourceMetas.map(async (resource) => {
+                    if (
+                      resource.status === 'REMOVED' &&
+                      (resource.resourceId.startsWith('STRUCTURE_') || resource.resourceId.startsWith('DEVICE_'))
+                    ) {
+                      // We have the removal of a 'home' and/ device
+                      deviceChanges.push({ object_key: resource.resourceId, change: 'removed' });
+                    }
+                  });
+                }
                 // eslint-disable-next-line no-unused-vars
               } catch (error) {
                 // Empty
               }
               buffer = buffer.subarray(messageSize); // Remove the message from the beginning of the buffer
 
-              if (typeof decodedMessage?.message[0]?.get === 'object') {
+              if (typeof decodedMessage?.observeResponse?.[0]?.traitStates === 'object') {
                 await Promise.all(
-                  decodedMessage.message[0].get.map(async (trait) => {
+                  decodedMessage.observeResponse[0].traitStates.map(async (trait) => {
                     if (trait.traitId.traitLabel === 'configuration_done') {
                       if (
                         this.#rawData[trait.traitId.resourceId]?.value?.configuration_done?.deviceReady !== true &&
@@ -1041,28 +1039,40 @@ export default class NestAccfactory {
                   ) {
                     let alerts = []; // No alerts yet
 
-                    let commandResponse = await this.#protobufCommand(object.object_key, [
+                    let commandResponse = await this.#protobufCommand(
+                      this.#rawData[object.object_key].connection,
+                      'ResourceApi',
+                      'SendCommand',
                       {
-                        traitLabel: 'camera_observation_history',
-                        command: {
-                          type_url: 'type.nestlabs.com/nest.trait.history.CameraObservationHistoryTrait.CameraObservationHistoryRequest',
-                          value: {
-                            // We want camera history from now for upto 30secs from now
-                            queryStartTime: { seconds: Math.floor(Date.now() / 1000), nanos: (Math.round(Date.now()) % 1000) * 1e6 },
-                            queryEndTime: {
-                              seconds: Math.floor((Date.now() + 30000) / 1000),
-                              nanos: (Math.round(Date.now() + 30000) % 1000) * 1e6,
+                        resourceRequest: {
+                          resourceId: object.object_key,
+                          requestId: crypto.randomUUID(),
+                        },
+                        resourceCommands: [
+                          {
+                            traitLabel: 'camera_observation_history',
+                            command: {
+                              type_url:
+                                'type.nestlabs.com/nest.trait.history.CameraObservationHistoryTrait.CameraObservationHistoryRequest',
+                              value: {
+                                // We want camera history from now for upto 30secs from now
+                                queryStartTime: { seconds: Math.floor(Date.now() / 1000), nanos: (Math.round(Date.now()) % 1000) * 1e6 },
+                                queryEndTime: {
+                                  seconds: Math.floor((Date.now() + 30000) / 1000),
+                                  nanos: (Math.round(Date.now() + 30000) % 1000) * 1e6,
+                                },
+                              },
                             },
                           },
-                        },
+                        ],
                       },
-                    ]);
+                    );
 
                     if (
-                      typeof commandResponse?.resourceCommandResponse?.[0]?.traitOperations?.[0]?.event?.event?.cameraEventWindow
+                      typeof commandResponse?.sendCommandResponse?.[0]?.traitOperations?.[0]?.event?.event?.cameraEventWindow
                         ?.cameraEvent === 'object'
                     ) {
-                      commandResponse.resourceCommandResponse[0].traitOperations[0].event.event.cameraEventWindow.cameraEvent.forEach(
+                      commandResponse.sendCommandResponse[0].traitOperations[0].event.event.cameraEventWindow.cameraEvent.forEach(
                         (event) => {
                           alerts.push({
                             playback_time: parseInt(event.startTime.seconds) * 1000 + parseInt(event.startTime.nanos) / 1000000,
@@ -1398,21 +1408,20 @@ export default class NestAccfactory {
               typeof value.value?.target_temperature_settings?.targetTemperature?.coolingTarget?.value === 'number'
                 ? value.value.target_temperature_settings.targetTemperature.coolingTarget.value
                 : 0.0;
-            if (value.value?.target_temperature_settings?.targetTemperature?.setpointType === 'SET_POINT_TYPE_COOL') {
-              // Target temperature is the cooling point
-              RESTTypeData.target_temperature = value.value.target_temperature_settings.targetTemperature.coolingTarget.value;
-            }
-            if (value.value?.target_temperature_settings?.targetTemperature?.setpointType === 'SET_POINT_TYPE_HEAT') {
-              // Target temperature is the heating point
-              RESTTypeData.target_temperature = value.value.target_temperature_settings.targetTemperature.heatingTarget.value;
-            }
-            if (value.value?.target_temperature_settings?.targetTemperature?.setpointType === 'SET_POINT_TYPE_RANGE') {
-              // Target temperature is in between the heating and cooling point
-              RESTTypeData.target_temperature =
-                (value.value.target_temperature_settings.targetTemperature.coolingTarget.value +
-                  value.value.target_temperature_settings.targetTemperature.heatingTarget.value) *
-                0.5;
-            }
+            RESTTypeData.target_temperature =
+              value.value?.target_temperature_settings?.targetTemperature?.setpointType === 'SET_POINT_TYPE_COOL' &&
+              typeof value.value?.target_temperature_settings?.targetTemperature?.coolingTarget?.value === 'number'
+                ? value.value.target_temperature_settings.targetTemperature.coolingTarget.value
+                : value.value?.target_temperature_settings?.targetTemperature?.setpointType === 'SET_POINT_TYPE_HEAT' &&
+                    typeof value.value?.target_temperature_settings?.targetTemperature?.heatingTarget?.value === 'number'
+                  ? value.value.target_temperature_settings.targetTemperature.heatingTarget.value
+                  : value.value?.target_temperature_settings?.targetTemperature?.setpointType === 'SET_POINT_TYPE_RANGE' &&
+                      typeof value.value?.target_temperature_settings?.targetTemperature?.coolingTarget?.value === 'number' &&
+                      typeof value.value?.target_temperature_settings?.targetTemperature?.heatingTarget?.value === 'number'
+                    ? (value.value.target_temperature_settings.targetTemperature.coolingTarget.value +
+                        value.value.target_temperature_settings.targetTemperature.heatingTarget.value) *
+                      0.5
+                    : 0.0;
 
             // Work out if eco mode is active and adjust temperature low/high and target
             if (value.value?.eco_mode_state?.ecoMode !== 'ECO_MODE_INACTIVE') {
@@ -1519,6 +1528,7 @@ export default class NestAccfactory {
             }
 
             RESTTypeData.schedule_mode =
+              value.value?.target_temperature_settings?.targetTemperature?.setpointType !== undefined &&
               value.value.target_temperature_settings.targetTemperature.setpointType.split('SET_POINT_TYPE_')[1].toLowerCase() !== 'off'
                 ? value.value.target_temperature_settings.targetTemperature.setpointType.split('SET_POINT_TYPE_')[1].toLowerCase()
                 : '';
@@ -2428,8 +2438,7 @@ export default class NestAccfactory {
       this.#connections[this.#rawData[deviceUUID].connection].protobufRoot !== null &&
       this.#rawData?.[deviceUUID]?.source === NestAccfactory.DataSource.PROTOBUF
     ) {
-      let TraitMap = this.#connections[this.#rawData?.[deviceUUID]?.connection].protobufRoot.lookup('nest.messages.TraitSetRequest');
-      let setDataToEncode = [];
+      let updatedTraits = [];
       let protobufElement = {
         traitId: {
           resourceId: deviceUUID,
@@ -2466,34 +2475,37 @@ export default class NestAccfactory {
               typeof value === 'number')
           ) {
             // Set either the 'mode' and/or non-eco temperatures on the target thermostat
-            let coolingTarget = this.#rawData[deviceUUID].value.target_temperature_settings.targetTemperature.coolingTarget.value;
-            let heatingTarget = this.#rawData[deviceUUID].value.target_temperature_settings.targetTemperature.heatingTarget.value;
-
-            if (
-              key === 'target_temperature_low' ||
-              (key === 'target_temperature' &&
-                this.#rawData?.[deviceUUID]?.value?.target_temperature_settings?.targetTemperature?.setpointType === 'SET_POINT_TYPE_HEAT')
-            ) {
-              heatingTarget = value;
-            }
-            if (
-              key === 'target_temperature_high' ||
-              (key === 'target_temperature' &&
-                this.#rawData?.[deviceUUID]?.value?.target_temperature_settings?.targetTemperature?.setpointType === 'SET_POINT_TYPE_COOL')
-            ) {
-              coolingTarget = value;
-            }
-
             protobufElement.traitId.traitLabel = 'target_temperature_settings';
             protobufElement.property.type_url = 'type.nestlabs.com/nest.trait.hvac.TargetTemperatureSettingsTrait';
-            // eslint-disable-next-line no-undef
-            protobufElement.property.value.targetTemperature = structuredClone(this.#rawData[deviceUUID].value.target_temperature_settings);
-            protobufElement.property.value.targetTemperature.setpointType =
-              key === 'hvac_mode' && value.toUpperCase() !== 'OFF'
-                ? 'SET_POINT_TYPE_' + value.toUpperCase()
-                : this.#rawData[deviceUUID].value.target_temperature_settings.targetTemperature.setpointType;
-            protobufElement.property.value.targetTemperature.heatingTarget = { value: heatingTarget };
-            protobufElement.property.value.targetTemperature.coolingTarget = { value: coolingTarget };
+            protobufElement.property.value = this.#rawData[deviceUUID].value.target_temperature_settings;
+
+            if (
+              (key === 'target_temperature_low' || key === 'target_temperature') &&
+              (protobufElement.property.value.targetTemperature.setpointType === 'SET_POINT_TYPE_HEAT' ||
+                protobufElement.property.value.targetTemperature.setpointType === 'SET_POINT_TYPE_RANGE')
+            ) {
+              // Changing heating target temperature
+              protobufElement.property.value.targetTemperature.heatingTarget = { value: value };
+            }
+            if (
+              (key === 'target_temperature_high' || key === 'target_temperature') &&
+              (protobufElement.property.value.targetTemperature.setpointType === 'SET_POINT_TYPE_COOL' ||
+                protobufElement.property.value.targetTemperature.setpointType === 'SET_POINT_TYPE_RANGE')
+            ) {
+              // Changing cooling target temperature
+              protobufElement.property.value.targetTemperature.coolingTarget = { value: value };
+            }
+
+            if (key === 'hvac_mode' && value.toUpperCase() !== 'OFF') {
+              protobufElement.property.value.targetTemperature.setpointType = 'SET_POINT_TYPE_' + value.toUpperCase();
+              protobufElement.property.value.enabled = { value: true };
+            }
+
+            if (key === 'hvac_mode' && value.toUpperCase() === 'OFF') {
+              protobufElement.property.value.enabled = { value: false };
+            }
+
+            // Tage 'who is doing the temperature/mode change. We are :-)
             protobufElement.property.value.targetTemperature.currentActorInfo = {
               method: 'HVAC_ACTOR_METHOD_IOS',
               originator: {
@@ -2503,18 +2515,6 @@ export default class NestAccfactory {
               },
               timeOfAction: { seconds: Math.floor(Date.now() / 1000), nanos: (Date.now() % 1000) * 1e6 },
               originatorRtsId: '',
-            };
-            protobufElement.property.value.targetTemperature.originalActorInfo = {
-              method: 'HVAC_ACTOR_METHOD_UNSPECIFIED',
-              originator: null,
-              timeOfAction: null,
-              originatorRtsId: '',
-            };
-            protobufElement.property.value.enabled = {
-              value:
-                key === 'hvac_mode'
-                  ? value.toUpperCase() !== 'OFF'
-                  : this.#rawData[deviceUUID].value.target_temperature_settings.enabled.value,
             };
           }
 
@@ -2532,8 +2532,8 @@ export default class NestAccfactory {
             // Set eco mode temperatures on the target thermostat
             protobufElement.traitId.traitLabel = 'eco_mode_settings';
             protobufElement.property.type_url = 'type.nestlabs.com/nest.trait.hvac.EcoModeSettingsTrait';
-            // eslint-disable-next-line no-undef
-            protobufElement.property.value = structuredClone(this.#rawData[deviceUUID].value.eco_mode_settings);
+            protobufElement.property.value = this.#rawData[deviceUUID].value.eco_mode_settings;
+
             protobufElement.property.value.ecoTemperatureHeat.value.value =
               protobufElement.property.value.ecoTemperatureHeat.enabled === true &&
               protobufElement.property.value.ecoTemperatureCool.enabled === false
@@ -2562,8 +2562,7 @@ export default class NestAccfactory {
             // Set the temperature scale on the target thermostat
             protobufElement.traitId.traitLabel = 'display_settings';
             protobufElement.property.type_url = 'type.nestlabs.com/nest.trait.hvac.DisplaySettingsTrait';
-            // eslint-disable-next-line no-undef
-            protobufElement.property.value = structuredClone(this.#rawData[deviceUUID].value.display_settings);
+            protobufElement.property.value = this.#rawData[deviceUUID].value.display_settings;
             protobufElement.property.value.temperatureScale = value.toUpperCase() === 'F' ? 'TEMPERATURE_SCALE_F' : 'TEMPERATURE_SCALE_C';
           }
 
@@ -2571,8 +2570,7 @@ export default class NestAccfactory {
             // Set lock mode on the target thermostat
             protobufElement.traitId.traitLabel = 'temperature_lock_settings';
             protobufElement.property.type_url = 'type.nestlabs.com/nest.trait.hvac.TemperatureLockSettingsTrait';
-            // eslint-disable-next-line no-undef
-            protobufElement.property.value = structuredClone(this.#rawData[deviceUUID].value.temperature_lock_settings);
+            protobufElement.property.value = this.#rawData[deviceUUID].value.temperature_lock_settings;
             protobufElement.property.value.enabled = value === true;
           }
 
@@ -2585,8 +2583,7 @@ export default class NestAccfactory {
 
             protobufElement.traitId.traitLabel = 'fan_control_settings';
             protobufElement.property.type_url = 'type.nestlabs.com/nest.trait.hvac.FanControlSettingsTrait';
-            // eslint-disable-next-line no-undef
-            protobufElement.property.value = structuredClone(this.#rawData[deviceUUID].value.fan_control_settings);
+            protobufElement.property.value = this.#rawData[deviceUUID].value.fan_control_settings;
             protobufElement.property.value.timerEnd = { seconds: endTime, nanos: (endTime % 1000) * 1e6 };
           }
 
@@ -2597,23 +2594,17 @@ export default class NestAccfactory {
             // Turn camera video on/off
             protobufElement.traitId.traitLabel = 'recording_toggle_settings';
             protobufElement.property.type_url = 'type.nestlabs.com/nest.trait.product.camera.RecordingToggleSettingsTrait';
-            // eslint-disable-next-line no-undef
-            protobufElement.property.value = structuredClone(this.#rawData[deviceUUID].value.recording_toggle_settings);
+            protobufElement.property.value = this.#rawData[deviceUUID].value.recording_toggle_settings;
             protobufElement.property.value.targetCameraState = value === true ? 'CAMERA_ON' : 'CAMERA_OFF';
             protobufElement.property.value.changeModeReason = 2;
             protobufElement.property.value.settingsUpdated = { seconds: Math.floor(Date.now() / 1000), nanos: (Date.now() % 1000) * 1e6 };
-          }
-
-          if (key === 'watermark.enabled' && typeof value === 'boolean') {
-            // Unsupported via Protobuf?
           }
 
           if (key === 'audio.enabled' && typeof value === 'boolean') {
             // Enable/disable microphone on camera/doorbell
             protobufElement.traitId.traitLabel = 'microphone_settings';
             protobufElement.property.type_url = 'type.nestlabs.com/nest.trait.audio.MicrophoneSettingsTrait';
-            // eslint-disable-next-line no-undef
-            protobufElement.property.value = structuredClone(this.#rawData[deviceUUID].value.microphone_settings);
+            protobufElement.property.value = this.#rawData[deviceUUID].value.microphone_settings;
             protobufElement.property.value.enableMicrophone = value;
           }
 
@@ -2622,7 +2613,7 @@ export default class NestAccfactory {
             protobufElement.traitId.traitLabel = 'doorbell_indoor_chime_settings';
             protobufElement.property.type_url = 'type.nestlabs.com/nest.trait.product.doorbell.DoorbellIndoorChimeSettingsTrait';
             // eslint-disable-next-line no-undef
-            protobufElement.property.value = structuredClone(this.#rawData[deviceUUID].value.doorbell_indoor_chime_settings);
+            protobufElement.property.value = this.#rawData[deviceUUID].value.doorbell_indoor_chime_settings;
             protobufElement.property.value.chimeEnabled = value;
           }
 
@@ -2630,8 +2621,7 @@ export default class NestAccfactory {
             // Turn on/off light on supported camera devices
             protobufElement.traitId.traitLabel = 'floodlight_state';
             protobufElement.property.type_url = 'type.nestlabs.com/google.trait.product.camera.FloodlightStateTrait';
-            // eslint-disable-next-line no-undef
-            protobufElement.property.value = structuredClone(this.#rawData[deviceUUID].value.floodlight_state);
+            protobufElement.property.value = this.#rawData[deviceUUID].value.floodlight_state;
             protobufElement.property.value.currentState = value === true ? 'LIGHT_STATE_ON' : 'LIGHT_STATE_OFF';
           }
 
@@ -2639,49 +2629,31 @@ export default class NestAccfactory {
             // Set light brightness on supported camera devices
             protobufElement.traitId.traitLabel = 'floodlight_settings';
             protobufElement.property.type_url = 'type.nestlabs.com/google.trait.product.camera.FloodlightSettingsTrait';
-            // eslint-disable-next-line no-undef
-            protobufElement.property.value = structuredClone(this.#rawData[deviceUUID].value.floodlight_settings);
-            protobufElement.property.value.brightness = value;
+            protobufElement.property.value = this.#rawData[deviceUUID].value.floodlight_settings;
+            protobufElement.property.value.brightness = scaleValue(value, 0, 100, 0, 10); // Scale to required level
           }
 
           if (protobufElement.traitId.traitLabel === '' || protobufElement.property.type_url === '') {
-            this?.log?.debug && this.log.debug('Unknown Protobuf set key for device', deviceUUID, key, value);
+            this?.log?.debug && this.log.debug('Unknown Protobuf set key "%s" for device uuid "%s"', key, deviceUUID);
           }
 
           if (protobufElement.traitId.traitLabel !== '' && protobufElement.property.type_url !== '') {
-            let trait = this.#connections[this.#rawData[deviceUUID].connection].protobufRoot.lookup(
-              protobufElement.property.type_url.split('/')[1],
-            );
-            protobufElement.property.value = trait.encode(trait.fromObject(protobufElement.property.value)).finish();
             // eslint-disable-next-line no-undef
-            setDataToEncode.push(structuredClone(protobufElement));
+            updatedTraits.push(structuredClone(protobufElement));
           }
         }),
       );
 
-      if (setDataToEncode.length !== 0 && TraitMap !== null) {
-        let encodedData = TraitMap.encode(TraitMap.fromObject({ set: setDataToEncode })).finish();
-
-        await fetchWrapper(
-          'post',
-          'https://' +
-            this.#connections[this.#rawData[deviceUUID].connection].protobufAPIHost +
-            '/nestlabs.gateway.v1.TraitBatchApi/BatchUpdateState',
-          {
-            headers: {
-              referer: 'https://' + this.#connections[this.#rawData[deviceUUID].connection].referer,
-              'User-Agent': USERAGENT,
-              Authorization: 'Basic ' + this.#connections[this.#rawData[deviceUUID].connection].token,
-              'Content-Type': 'application/x-protobuf',
-              'X-Accept-Content-Transfer-Encoding': 'binary',
-              'X-Accept-Response-Streaming': 'true',
-            },
-          },
-          encodedData,
-        ).catch((error) => {
-          this?.log?.debug &&
-            this.log.debug('Protobuf API had error updating device traits for uuid "%s". Error was "%s"', deviceUUID, error?.code);
+      if (updatedTraits.length !== 0) {
+        let commandResponse = await this.#protobufCommand(this.#rawData[deviceUUID].connection, 'TraitBatchApi', 'BatchUpdateState', {
+          batchUpdateStateRequest: updatedTraits,
         });
+        if (
+          commandResponse === undefined ||
+          commandResponse?.batchUpdateStateResponse?.[0]?.traitOperations?.[0]?.progress !== 'COMPLETE'
+        ) {
+          this?.log?.debug && this.log.debug('Protobuf API had error updating device traits for uuid "%s"', deviceUUID);
+        }
       }
     }
 
@@ -2830,18 +2802,24 @@ export default class NestAccfactory {
         ) {
           // Attempt to retrieve snapshot from camera via Protobuf API
           // First, request to get snapshot url image updated
-          let commandResponse = await this.#protobufCommand(deviceUUID, [
-            {
-              traitLabel: 'upload_live_image',
-              command: {
-                type_url: 'type.nestlabs.com/nest.trait.product.camera.UploadLiveImageTrait.UploadLiveImageRequest',
-                value: {},
-              },
+          let commandResponse = await this.#protobufCommand(this.#rawData[deviceUUID].connection, 'ResourceApi', 'SendCommand', {
+            resourceRequest: {
+              resourceId: deviceUUID,
+              requestId: crypto.randomUUID(),
             },
-          ]);
+            resourceCommands: [
+              {
+                traitLabel: 'upload_live_image',
+                command: {
+                  type_url: 'type.nestlabs.com/nest.trait.product.camera.UploadLiveImageTrait.UploadLiveImageRequest',
+                  value: {},
+                },
+              },
+            ],
+          });
 
           if (
-            commandResponse?.resourceCommandResponse?.[0]?.traitOperations?.[0]?.progress === 'COMPLETE' &&
+            commandResponse?.sendCommandResponse?.[0]?.traitOperations?.[0]?.progress === 'COMPLETE' &&
             typeof this.#rawData?.[deviceUUID]?.value?.upload_live_image?.liveImageUrl === 'string' &&
             this.#rawData[deviceUUID].value.upload_live_image.liveImageUrl !== ''
           ) {
@@ -2915,55 +2893,54 @@ export default class NestAccfactory {
     return weatherData;
   }
 
-  async #protobufCommand(deviceUUID, commands) {
+  async #protobufCommand(connectionUUID, service, command, values) {
     if (
-      typeof deviceUUID !== 'string' ||
-      typeof this.#rawData?.[deviceUUID] !== 'object' ||
-      this.#rawData?.[deviceUUID]?.source !== NestAccfactory.DataSource.PROTOBUF ||
-      Array.isArray(commands === false) ||
-      typeof this.#connections[this.#rawData?.[deviceUUID]?.connection] !== 'object'
+      this.#connections?.[connectionUUID]?.protobufRoot === null ||
+      typeof service !== 'string' ||
+      service === '' ||
+      typeof command !== 'string' ||
+      command === '' ||
+      typeof values !== 'object'
     ) {
       return;
     }
 
-    let commandResponse = undefined;
-    let encodedData = undefined;
+    const encodeValues = (object) => {
+      if (typeof object === 'object' && object !== null) {
+        if ('type_url' in object && 'value' in object) {
+          // We hvae a type_url and value object at this same level, we'll treat this as requiring encoding
+          let TraitMap = this.#connections[connectionUUID].protobufRoot.lookup(object.type_url.split('/')[1]);
+          if (TraitMap !== null) {
+            object.value = TraitMap.encode(TraitMap.fromObject(object.value)).finish();
+          }
+        }
 
-    // Build the Protobuf command object for encoding
-    let protobufElement = {
-      resourceRequest: {
-        resourceId: deviceUUID,
-        requestId: crypto.randomUUID(),
-      },
-      resourceCommands: commands,
+        for (let key in object) {
+          if (object?.[key] !== undefined) {
+            encodeValues(object[key]);
+          }
+        }
+      }
     };
 
-    // End code each of the commands
-    protobufElement.resourceCommands.forEach((command) => {
-      let trait = this.#connections[this.#rawData[deviceUUID].connection].protobufRoot.lookup(command.command.type_url.split('/')[1]);
-      if (trait !== null) {
-        command.command.value = trait.encode(trait.fromObject(command.command.value)).finish();
-      }
-    });
+    // Attempt to retrieve both 'Request' and 'Reponse' traits for the associated service and command
+    let TraitMapRequest = this.#connections[connectionUUID].protobufRoot.lookup('nestlabs.gateway.v1.' + command + 'Request');
+    let TraitMapResponse = this.#connections[connectionUUID].protobufRoot.lookup('nestlabs.gateway.v1.' + command + 'Response');
+    let commandResponse = undefined;
 
-    let TraitMap = this.#connections[this.#rawData[deviceUUID].connection].protobufRoot.lookup(
-      'nestlabs.gateway.v1.ResourceCommandRequest',
-    );
-    if (TraitMap !== null) {
-      encodedData = TraitMap.encode(TraitMap.fromObject(protobufElement)).finish();
-    }
+    if (TraitMapRequest !== null && TraitMapResponse !== null) {
+      // Encode any trait values in our passed in object
+      encodeValues(values);
 
-    if (encodedData !== undefined) {
+      let encodedData = TraitMapRequest.encode(TraitMapRequest.fromObject(values)).finish();
       await fetchWrapper(
         'post',
-        'https://' +
-          this.#connections[this.#rawData[deviceUUID].connection].protobufAPIHost +
-          '/nestlabs.gateway.v1.ResourceApi/SendCommand',
+        'https://' + this.#connections[connectionUUID].protobufAPIHost + '/nestlabs.gateway.v1.' + service + '/' + command,
         {
           headers: {
-            referer: 'https://' + this.#connections[this.#rawData[deviceUUID].connection].referer,
+            referer: 'https://' + this.#connections[connectionUUID].referer,
             'User-Agent': USERAGENT,
-            Authorization: 'Basic ' + this.#connections[this.#rawData[deviceUUID].connection].token,
+            Authorization: 'Basic ' + this.#connections[connectionUUID].token,
             'Content-Type': 'application/x-protobuf',
             'X-Accept-Content-Transfer-Encoding': 'binary',
             'X-Accept-Response-Streaming': 'true',
@@ -2973,17 +2950,12 @@ export default class NestAccfactory {
       )
         .then((response) => response.bytes())
         .then((data) => {
-          commandResponse = this.#connections[this.#rawData[deviceUUID].connection].protobufRoot
-            .lookup('nestlabs.gateway.v1.ResourceCommandResponseFromAPI')
-            .decode(data)
-            .toJSON();
+          commandResponse = TraitMapResponse.decode(data).toJSON();
         })
         .catch((error) => {
-          this?.log?.debug &&
-            this.log.debug('Protobuf command send failed with error for uuid "%s". Error was "%s"', deviceUUID, error?.code);
+          this?.log?.debug && this.log.debug('Protobuf service command failed with error. Error was "%s"', error?.code);
         });
     }
-
     return commandResponse;
   }
 }

@@ -16,7 +16,7 @@
 //
 // Supports both Nest REST and protobuf APIs for communication to Nest systems
 //
-// Code version 11/9/2024
+// Code version 12/9/2024
 // Mark Hulskamp
 'use strict';
 
@@ -70,26 +70,24 @@ function loadConfiguration(filename) {
       if (key === 'Connections' && typeof value === 'object') {
         // Array of 'connections' to different logins. Can be a combination of Nest, google and SDM
         Object.entries(value).forEach(([subKey, value]) => {
-          if (subKey === 'Nest' && typeof value === 'object' && typeof value?.access_token === 'string' && value.access_token !== '') {
+          if (typeof value === 'object' && typeof value?.access_token === 'string' && value.access_token !== '') {
             // Nest accounts access_token to use for Nest API calls
-            config.nest = {
+            config[subKey] = {
               access_token: value.access_token.trim(),
-              fieldTest: typeof value?.FieldTest === 'boolean' ? value.FieldTest : false,
+              fieldTest: value?.FieldTest === true,
             };
           }
-          if (
-            subKey === 'Google' &&
-            typeof value === 'object' &&
+          if (typeof value === 'object' &&
             typeof value?.issuetoken === 'string' &&
             value.issuetoken !== '' &&
             typeof value?.cookie === 'string' &&
             value.cookie !== ''
           ) {
             // Google account issue token and cookie for Nest API calls
-            config.google = {
+            config[subKey] = {
               issuetoken: value.issuetoken.trim(),
               cookie: value.cookie.trim(),
-              fieldTest: typeof value?.FieldTest === 'boolean' ? value.FieldTest : false,
+              fieldTest: value?.FieldTest === true,
             };
           }
         });
@@ -97,9 +95,9 @@ function loadConfiguration(filename) {
       if (key === 'SessionToken' && typeof value === 'string' && value !== '') {
         // Nest accounts Session token to use for Nest API calls
         // NOTE: Legacy option. Use Connections option(s)
-        config.nest = {
+        config['legacynest'] = {
           access_token: value.trim(),
-          fieldTest: typeof loadedConfig?.FieldTest === 'boolean' ? loadedConfig.FieldTest : false,
+          fieldTest: value?.FieldTest === true,
         };
       }
       if (
@@ -112,10 +110,10 @@ function loadConfiguration(filename) {
       ) {
         // Google account issue token and cookie for Nest API calls
         // NOTE: Legacy option. Use Connections option(s)
-        config.google = {
+        config['legacygoogle'] = {
           issuetoken: value.issuetoken.trim(),
           cookie: value.cookie.trim(),
-          fieldTest: typeof value?.FieldTest === 'boolean' ? value.FieldTest : false,
+          fieldTest: value?.FieldTest === true,
         };
       }
       if (key === 'mDNS' && (typeof value === 'string') & (value !== '')) {
