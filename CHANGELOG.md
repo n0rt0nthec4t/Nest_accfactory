@@ -2,8 +2,14 @@
 
 All notable changes to `Nest_accfactory` will be documented in this file. This project tries to adhere to [Semantic Versioning](http://semver.org/).
 
+## 0.1.7 (2024-09-13)
 
-## 0.1.6 (2023-09-03)
+- General code cleanup and bug fixes
+- External dependancy reductions, dropped pbf and axios libraries
+- Nest Cam with Floodlight support with light on/off and brightness control
+- Fixed issued with setting range temperatures on Nest Thermostat(s)
+
+## 0.1.6 (2024-09-07)
 
 - Common code bases between my two projects, homebridge-nest-accfactory and Nest_accfactory
 - Configuration file format has change, but for this version, we'll handle the existing one   

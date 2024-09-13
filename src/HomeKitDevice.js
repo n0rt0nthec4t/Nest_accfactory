@@ -37,7 +37,7 @@
 // HomeKitDevice.updateServices(deviceData)
 // HomeKitDevice.messageServices(type, message)
 //
-// Code version 3/9/2024
+// Code version 13/9/2024
 // Mark Hulskamp
 'use strict';
 
@@ -104,7 +104,8 @@ export default class HomeKitDevice {
       this.#eventEmitter.addListener(this.deviceData.uuid, this.#message.bind(this));
     }
 
-    // Make copy of current data and store in this object
+    // Make a clone of current data and store in this object
+    // Important that we done have a 'linked' cope of the object data
     // eslint-disable-next-line no-undef
     this.deviceData = structuredClone(deviceData);
 
@@ -149,7 +150,10 @@ export default class HomeKitDevice {
       this.deviceData.model === '' ||
       typeof this.deviceData?.manufacturer !== 'string' ||
       this.deviceData.manufacturer === '' ||
-      (this.#platform === undefined && typeof this.deviceData?.hkPairingCode !== 'string' && this.deviceData.hkPairingCode === '') ||
+      (this.#platform === undefined &&
+        typeof this.deviceData?.hkPairingCode !== 'string' &&
+        (new RegExp(/^([0-9]{3}-[0-9]{2}-[0-9]{3})$/).test(this.deviceData.hkPairingCode) === true ||
+          new RegExp(/^([0-9]{4}-[0-9]{4})$/).test(this.deviceData.hkPairingCode) === true)) ||
       (this.#platform === undefined &&
         typeof this.deviceData?.hkUsername !== 'string' &&
         new RegExp(/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/).test(this.deviceData.hkUsername) === false)
@@ -239,7 +243,7 @@ export default class HomeKitDevice {
     }
   }
 
-  async remove() {
+  remove() {
     this?.log?.warn && this.log.warn('Device "%s" has been removed', this.deviceData.description);
 
     if (this.#eventEmitter === undefined && typeof this.deviceData?.uuid === 'string' && this.deviceData.uuid !== '') {
@@ -249,7 +253,7 @@ export default class HomeKitDevice {
 
     if (typeof this.removeServices === 'function') {
       try {
-        await this.removeServices();
+        this.removeServices();
       } catch (error) {
         this?.log?.error && this.log.error('removeServices call for device "%s" failed. Error was', this.deviceData.description, error);
       }
@@ -278,7 +282,7 @@ export default class HomeKitDevice {
     // delete this;
   }
 
-  async update(deviceData, forceUpdate) {
+  update(deviceData, forceUpdate) {
     if (typeof deviceData !== 'object' || typeof forceUpdate !== 'boolean') {
       return;
     }
@@ -357,7 +361,7 @@ export default class HomeKitDevice {
 
       if (typeof this.updateServices === 'function') {
         try {
-          await this.updateServices(deviceData); // Pass updated data on for accessory to process as it needs
+          this.updateServices(deviceData); // Pass updated data on for accessory to process as it needs
         } catch (error) {
           this?.log?.error && this.log.error('updateServices call for device "%s" failed. Error was', this.deviceData.description, error);
         }
@@ -381,6 +385,13 @@ export default class HomeKitDevice {
 
     // Send event with data to set
     this.#eventEmitter.emit(HomeKitDevice.SET, this.deviceData.uuid, values);
+
+    // Update the internal data for the set values, as could take sometime once we emit the event
+    Object.entries(values).forEach(([key, value]) => {
+      if (this.deviceData[key] !== undefined) {
+        this.deviceData[key] = value;
+      }
+    });
   }
 
   async get(values) {
@@ -393,17 +404,16 @@ export default class HomeKitDevice {
       return;
     }
 
-    // <---- TODO
-    // Send event with data to get. Once get has completed, callback will be called with the requested data
-    //this.#eventEmitter.emit(HomeKitDevice.GET, this.deviceData.uuid, values);
-    //
-    // await ....
-    // return gottenValues;
-    // <---- TODO
-    // Probable need some sort of await event
+    // Send event with data to get
+    // Once get has completed, we'll get an event back with the requested data
+    this.#eventEmitter.emit(HomeKitDevice.GET, this.deviceData.uuid, values);
+
+    // This should always return, but we probably should put in a timeout?
+    let results = await EventEmitter.once(this.#eventEmitter, HomeKitDevice.GET + '->' + this.deviceData.uuid);
+    return results?.[0];
   }
 
-  async #message(type, message) {
+  #message(type, message) {
     switch (type) {
       case HomeKitDevice.ADD: {
         // Got message for device add
@@ -429,7 +439,7 @@ export default class HomeKitDevice {
         // This is not a message we know about, so pass onto accessory for it to perform any processing
         if (typeof this.messageServices === 'function') {
           try {
-            await this.messageServices(type, message);
+            this.messageServices(type, message);
           } catch (error) {
             this?.log?.error &&
               this.log.error('messageServices call for device "%s" failed. Error was', this.deviceData.description, error);

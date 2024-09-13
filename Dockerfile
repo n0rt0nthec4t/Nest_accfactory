@@ -74,11 +74,14 @@ RUN ./configure \
     #--enable-vaapi \
     --disable-ffnvcodec \
     #--enable-amf \
+    --disable-doc \
     --disable-debug \
     --disable-shared \
     --enable-pthreads \
     --enable-static \
     --enable-version3 \
+    --enable-pthreads \
+    --enable-runtime-cpudetect \
     ${FFMPEG_EXTRA_OPTIONS} \
     && make -j 4 \
     && make install

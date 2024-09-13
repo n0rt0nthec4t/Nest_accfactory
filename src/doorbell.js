@@ -1,7 +1,7 @@
 // Nest Doorbell(s)
 // Part of homebridge-nest-accfactory
 //
-// Code version 3/9/2024
+// Code version 12/9/2024
 // Mark Hulskamp
 'use strict';
 
@@ -41,7 +41,7 @@ export default class NestDoorbell extends NestCamera {
       this.switchService.getCharacteristic(this.hap.Characteristic.On).onSet((value) => {
         if (value !== this.deviceData.indoor_chime_enabled) {
           // only change indoor chime status value if different than on-device
-          this.set({ 'doorbell.indoor_chime.enabled': value });
+          this.set({ indoor_chime_enabled: value });
 
           this?.log?.info && this.log.info('Indoor chime on "%s" was turned', this.deviceData.description, value === true ? 'on' : 'off');
         }
@@ -92,30 +92,16 @@ export default class NestDoorbell extends NestCamera {
         // Cooldown for doorbell button being pressed (filters out constant pressing for time period)
         // Start this before we process further
         this.doorbellTimer = setTimeout(() => {
-          this.snapshotEvent = undefined; // Clear snapshot event image after timeout
           this.doorbellTimer = undefined; // No doorbell timer active
         }, this.deviceData.doorbellCooldown * 1000);
 
-        if (event.types.includes('motion') === false) {
-          // No motion event with the doorbell alert, add one to trigger HKSV recording if configured
-          // seems in HomeKit, EventTriggerOption.DOORBELL gets ignored
-          event.types.push('motion');
-        }
-
-        this.snapshotEvent = {
-          type: 'ring',
-          time: event.playback_time,
-          id: event.id,
-          done: false,
-        };
-
         if (deviceData.indoor_chime_enabled === false || deviceData.quiet_time_enabled === true) {
           // Indoor chime is disabled or quiet time is enabled, so we won't 'ring' the doorbell
-          this?.log?.warn && this.log.warn('Doorbell rung at "%s" but indoor chime is silenced', this.deviceData.description);
+          this?.log?.warn && this.log.warn('Doorbell rung at "%s" but indoor chime is silenced', deviceData.description);
         }
         if (deviceData.indoor_chime_enabled === true && deviceData.quiet_time_enabled === false) {
           // Indoor chime is enabled and quiet time isn't enabled, so 'ring' the doorbell
-          this?.log?.info && this.log.info('Doorbell rung at "%s"', this.deviceData.description);
+          this?.log?.info && this.log.info('Doorbell rung at "%s"', deviceData.description);
           this.controller.ringDoorbell();
         }
 
