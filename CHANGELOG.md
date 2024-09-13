@@ -2,6 +2,10 @@
 
 All notable changes to `Nest_accfactory` will be documented in this file. This project tries to adhere to [Semantic Versioning](http://semver.org/).
 
+## 0.1.8 (2024-09-14)
+
+- Fix for two/way audio starting on non-enabled HKSV camera/doorbells
+
 ## 0.1.7 (2024-09-13)
 
 - General code cleanup and bug fixes
