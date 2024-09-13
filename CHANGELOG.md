@@ -9,7 +9,7 @@ All notable changes to `Nest_accfactory` will be documented in this file. This p
 - Nest Cam with Floodlight support with light on/off and brightness control
 - Fixed issued with setting range temperatures on Nest Thermostat(s)
 
-## 0.1.6 (2024-0-07)
+## 0.1.6 (2024-09-07)
 
 - Common code bases between my two projects, homebridge-nest-accfactory and Nest_accfactory
 - Configuration file format has change, but for this version, we'll handle the existing one   
