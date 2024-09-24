@@ -1,6 +1,6 @@
 <span align="center">
 
-⚠️ Since this project and homebridge-nest-accfactory share a common code base, I've decided to n-longer maintain source code in two places and as such, this repository will become read-only. The standalone docker image builds which donot rely on Homebridge will continue to be built from the new repository. Simplifies my workflow :-) 
+⚠️ Since this project and homebridge-nest-accfactory share a common code base, I've decided to no-longer maintain source code in two places and as such, this repository will become read-only. The standalone docker image builds which donot rely on Homebridge will continue to be built from the new repository. Simplifies my workflow :-) 
 
 Please head over to the new repository [homebridge-nest-accfactory docker/standalone](https://github.com/n0rt0nthec4t/homebridge-nest-accfactory/tree/main/src/dockerstandalone))
   
