@@ -7,3 +7,6 @@ dist
 package-lock.json
 Nest_config.json
 *.code-workspace
+*.opus
+*.aac
+*.mp4
