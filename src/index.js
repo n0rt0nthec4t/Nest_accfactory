@@ -281,3 +281,4 @@ log.info(
 );
 let nest = new NestAccfactory(log, config, HAP);
 nest.discoverDevices(); // Kick things off :-)
+setInterval(this.discoverDevices(), 15000);

@@ -22,7 +22,8 @@ RUN apk update \
     && apk add nasm \
     && apk add zlib-dev \
     && apk add speex-dev \
-    && apk add fdk-aac-dev 
+    && apk add fdk-aac-dev \
+    && apk add opus-dev
 
 # get x264 source and build for ffmpeg build below
 # we do this as the alpine linux repo has an older x264-lib package 
@@ -63,7 +64,7 @@ RUN ./configure \
     #--enable-libopencore_amrnb \
     #--enable-libopencore_amrwb \
     #--enable-libmp3lame \
-    #--enable-libopus \
+    --enable-libopus \
     #--enable-libvorbis \
     #--enable-libtheora \
     --enable-libfdk-aac \

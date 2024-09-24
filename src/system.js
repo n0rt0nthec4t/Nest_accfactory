@@ -1,7 +1,7 @@
 // Nest System communications
 // Part of homebridge-nest-accfactory
 //
-// Code version 13/9/2024
+// Code version 24/9/2024
 // Mark Hulskamp
 'use strict';
 
@@ -11,7 +11,7 @@ import protobuf from 'protobufjs';
 // Define nodejs module requirements
 import EventEmitter from 'node:events';
 import { Buffer } from 'node:buffer';
-import { setInterval, clearInterval, setTimeout } from 'node:timers';
+import { setInterval, clearInterval, setTimeout, clearTimeout } from 'node:timers';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -67,6 +67,7 @@ export default class NestAccfactory {
   #connections = {}; // Object of confirmed connections
   #rawData = {}; // Cached copy of data from both Rest and Protobuf APIs
   #eventEmitter = new EventEmitter(); // Used for object messaging from this platform
+  #connectionTimer = undefined;
 
   constructor(log, config, api) {
     this.config = config;
@@ -146,6 +147,7 @@ export default class NestAccfactory {
 
     this.config.options.ffmpeg['version'] = undefined;
     this.config.options.ffmpeg.libspeex = false;
+    this.config.options.ffmpeg.libopus = false;
     this.config.options.ffmpeg.libx264 = false;
     this.config.options.ffmpeg.libfdk_aac = false;
 
@@ -171,12 +173,13 @@ export default class NestAccfactory {
 
         // Determine what libraries ffmpeg is compiled with
         this.config.options.ffmpeg.libspeex = ffmpegProcess.stdout.toString().includes('--enable-libspeex') === true;
+        this.config.options.ffmpeg.libopus = ffmpegProcess.stdout.toString().includes('--enable-libopus') === true;
         this.config.options.ffmpeg.libx264 = ffmpegProcess.stdout.toString().includes('--enable-libx264') === true;
         this.config.options.ffmpeg.libfdk_aac = ffmpegProcess.stdout.toString().includes('--enable-libfdk-aac') === true;
-
         if (
           this.config.options.ffmpeg.version.replace(/\./gi, '') < parseFloat(FFMPEGVERSION.toString().replace(/\./gi, '')) ||
           this.config.options.ffmpeg.libspeex === false ||
+          this.config.options.ffmpeg.libopus === false ||
           this.config.options.ffmpeg.libx264 === false ||
           this.config.options.ffmpeg.libfdk_aac === false
         ) {
@@ -195,12 +198,32 @@ export default class NestAccfactory {
           }
           if (
             this.config.options.ffmpeg.libspeex === false &&
-            (this.config.options.ffmpeg.libx264 === true && this.config.options.ffmpeg.libfdk_aac) === true
+            this.config.options.ffmpeg.libx264 === true &&
+            this.config.options.ffmpeg.libfdk_aac === true
           ) {
-            this?.log?.warn && this.log.warn('Missing libspeex in ffmpeg binary, two-way audio on camera/doorbells will be unavailable');
+            this?.log?.warn &&
+              this.log.warn('Missing libspeex in ffmpeg binary, two-way audio on certain camera/doorbells will be unavailable');
+          }
+          if (
+            this.config.options.ffmpeg.libx264 === true &&
+            this.config.options.ffmpeg.libfdk_aac === false &&
+            this.config.options.ffmpeg.libopus === false
+          ) {
+            this?.log?.warn &&
+              this.log.warn('Missing libfdk_aac and libopus in ffmpeg binary, audio from camera/doorbells will be unavailable');
           }
           if (this.config.options.ffmpeg.libx264 === true && this.config.options.ffmpeg.libfdk_aac === false) {
             this?.log?.warn && this.log.warn('Missing libfdk_aac in ffmpeg binary, audio from camera/doorbells will be unavailable');
+          }
+          if (
+            this.config.options.ffmpeg.libx264 === true &&
+            this.config.options.ffmpeg.libfdk_aac === true &&
+            this.config.options.ffmpeg.libopus === false
+          ) {
+            this?.log?.warn &&
+              this.log.warn(
+                'Missing libopus in ffmpeg binary, audio (including talkback) from certain camera/doorbells will be unavailable',
+              );
           }
           if (this.config.options.ffmpeg.libx264 === false) {
             this?.log?.warn &&
@@ -216,12 +239,20 @@ export default class NestAccfactory {
       this.api.on('didFinishLaunching', async () => {
         // We got notified that Homebridge has finished loading, so we are ready to process
         this.discoverDevices();
+
+        // We'll check connection status every 15 seconds. We'll also handle token expiry/refresh this way
+        clearInterval(this.#connectionTimer);
+        this.#connectionTimer = setInterval(this.discoverDevices(), 15000);
       });
 
       this.api.on('shutdown', async () => {
-        // We got notified that Homebridge is shutting down. Perform cleanup??
+        // We got notified that Homebridge is shutting down
+        // Perform cleanup some internal cleaning up
         this.#eventEmitter.removeAllListeners(HomeKitDevice.SET);
         this.#eventEmitter.removeAllListeners(HomeKitDevice.GET);
+        clearInterval(this.#connectionTimer);
+        this.#connectionTimer = undefined;
+        this.#rawData = {};
       });
     }
   }
@@ -235,17 +266,23 @@ export default class NestAccfactory {
   }
 
   async discoverDevices() {
-    // Setup event listeners for set/get calls from devices
-    this.#eventEmitter.addListener(HomeKitDevice.SET, (deviceUUID, values) => this.#set(deviceUUID, values));
-    this.#eventEmitter.addListener(HomeKitDevice.GET, (deviceUUID, values) => this.#get(deviceUUID, values));
+    // Setup event listeners for set/get calls from devices if not already done so
+    if (this.#eventEmitter.listenerCount(HomeKitDevice.SET) === 0) {
+      this.#eventEmitter.addListener(HomeKitDevice.SET, (deviceUUID, values) => this.#set(deviceUUID, values));
+    }
+    if (this.#eventEmitter.listenerCount(HomeKitDevice.GET) === 0) {
+      this.#eventEmitter.addListener(HomeKitDevice.GET, (deviceUUID, values) => this.#get(deviceUUID, values));
+    }
 
     Object.keys(this.#connections).forEach((uuid) => {
-      this.#connect(uuid).then(() => {
-        if (this.#connections[uuid].authorised === true) {
-          this.#subscribeREST(uuid, true);
-          this.#subscribeProtobuf(uuid);
-        }
-      });
+      if (this.#connections[uuid].authorised === false) {
+        this.#connect(uuid).then(() => {
+          if (this.#connections[uuid].authorised === true) {
+            this.#subscribeREST(uuid, true);
+            this.#subscribeProtobuf(uuid);
+          }
+        });
+      }
     });
   }
 
@@ -318,11 +355,11 @@ export default class NestAccfactory {
                     };
 
                     // Set timeout for token expiry refresh
-                    this.#connections[connectionUUID].timer = clearInterval(this.#connections[connectionUUID].timer);
+                    clearTimeout(this.#connections[connectionUUID].timer);
                     this.#connections[connectionUUID].timer = setTimeout(
                       () => {
+                        this.#connections[connectionUUID].authorised = false; // Flag not authorised anymore
                         this?.log?.info && this.log.info('Performing periodic token refresh for Google account');
-                        this.#connect(connectionUUID);
                       },
                       (tokenExpire - Math.floor(Date.now() / 1000) - 60) * 1000,
                     ); // Refresh just before token expiry
@@ -390,11 +427,11 @@ export default class NestAccfactory {
                 };
 
                 // Set timeout for token expiry refresh
-                this.#connections[connectionUUID].timer = clearInterval(this.#connections[connectionUUID].timer);
+                clearTimeout(this.#connections[connectionUUID].timer);
                 this.#connections[connectionUUID].timer = setTimeout(
                   () => {
+                    this.#connections[connectionUUID].authorised = false; // Flag not authorised anymore
                     this?.log?.info && this.log.info('Performing periodic token refresh for Nest account');
-                    this.#connect(connectionUUID);
                   },
                   1000 * 3600 * 24,
                 ); // Refresh token every 24hrs
@@ -920,26 +957,22 @@ export default class NestAccfactory {
           }
           if (object.object_key === deviceData.uuid && deviceData.excluded === false) {
             // Device isn't marked as excluded, so create the required HomeKit accessories based upon the device data
+            this?.log?.debug &&
+              this.log.debug('Using %s API as data source for "%s"', this.#rawData[object.object_key]?.source, deviceData.description);
             if (deviceData.device_type === NestAccfactory.DeviceType.THERMOSTAT && typeof NestThermostat === 'function') {
               // Nest Thermostat(s) - Categories.THERMOSTAT = 9
-              this?.log?.debug &&
-                this.log.debug('Using "%s" data source for "%s"', this.#rawData[object.object_key]?.source, deviceData.description);
               let tempDevice = new NestThermostat(this.cachedAccessories, this.api, this.log, this.#eventEmitter, deviceData);
               tempDevice.add('Nest Thermostat', 9, true);
             }
 
             if (deviceData.device_type === NestAccfactory.DeviceType.TEMPSENSOR && typeof NestTemperatureSensor === 'function') {
-              // Nest Temperature Sensor - Categories.SENSOR = 10
-              this?.log?.debug &&
-                this.log.debug('Using "%s" data source for "%s"', this.#rawData[object.object_key]?.source, deviceData.description);
+              // Nest Temperature Sensor - Categories.SENSOR = 10;
               let tempDevice = new NestTemperatureSensor(this.cachedAccessories, this.api, this.log, this.#eventEmitter, deviceData);
               tempDevice.add('Nest Temperature Sensor', 10, true);
             }
 
             if (deviceData.device_type === NestAccfactory.DeviceType.SMOKESENSOR && typeof NestProtect === 'function') {
               // Nest Protect(s) - Categories.SENSOR = 10
-              this?.log?.debug &&
-                this.log.debug('Using "%s" data source for "%s"', this.#rawData[object.object_key]?.source, deviceData.description);
               let tempDevice = new NestProtect(this.cachedAccessories, this.api, this.log, this.#eventEmitter, deviceData);
               tempDevice.add('Nest Protect', 10, true);
             }
@@ -950,9 +983,6 @@ export default class NestAccfactory {
                 deviceData.device_type === NestAccfactory.DeviceType.FLOODLIGHT) &&
               (typeof NestCamera === 'function' || typeof NestDoorbell === 'function' || typeof NestFloodlight === 'function')
             ) {
-              this?.log?.debug &&
-                this.log.debug('Using "%s" data source for "%s"', this.#rawData[object.object_key]?.source, deviceData.description);
-
               let accessoryName = 'Nest ' + deviceData.model.replace(/\s*(?:\([^()]*\))/gi, '');
               if (deviceData.device_type === NestAccfactory.DeviceType.CAMERA) {
                 // Nest Camera(s) - Categories.IP_CAMERA = 17
@@ -1186,8 +1216,6 @@ export default class NestAccfactory {
             }
             if (deviceData.device_type === NestAccfactory.DeviceType.WEATHER && typeof NestWeather === 'function') {
               // Nest 'Virtual' weather station - Categories.SENSOR = 10
-              this?.log?.debug &&
-                this.log.debug('Using "%s" data source for "%s"', this.#rawData[object.object_key]?.source, deviceData.description);
               let tempDevice = new NestWeather(this.cachedAccessories, this.api, this.log, this.#eventEmitter, deviceData);
               tempDevice.add('Nest Weather', 10, true);
 
@@ -2200,7 +2228,7 @@ export default class NestAccfactory {
             //RESTTypeData.has_statusled =
             //RESTTypeData.statusled_brightness =
             RESTTypeData.has_microphone = value.value?.microphone_settings?.enableMicrophone === true;
-            RESTTypeData.has_speaker = value.value?.speaker_volume?.volume === true;
+            RESTTypeData.has_speaker = typeof value.value?.speaker_volume?.volume === 'number';
             RESTTypeData.has_motion_detection = value.value?.observation_trigger_capabilities?.videoEventTypes?.motion?.value === true;
             RESTTypeData.activity_zones = [];
             if (value.value?.activity_zone_settings?.activityZones !== undefined) {
@@ -2590,10 +2618,17 @@ export default class NestAccfactory {
             protobufElement.state.value.timerEnd = { seconds: endTime, nanos: (endTime % 1000) * 1e6 };
           }
 
-          //if (key === 'statusled.brightness'
-          //if (key === 'irled.state'
+          if (key === 'statusled_brightness' && typeof value === 'number') {
+            // 0
+            // 1
+          }
 
-          if (key === 'streaming.enabled' && typeof value === 'boolean') {
+          if (key === 'irled_enabled' && typeof value === 'string') {
+            // 'auto_on'
+            // 'always_off'
+          }
+
+          if (key === 'streaming_enabled' && typeof value === 'boolean') {
             // Turn camera video on/off
             protobufElement.traitRequest.traitLabel = 'recording_toggle_settings';
             protobufElement.state.type_url = 'type.nestlabs.com/nest.trait.product.camera.RecordingToggleSettingsTrait';
@@ -2603,7 +2638,7 @@ export default class NestAccfactory {
             protobufElement.state.value.settingsUpdated = { seconds: Math.floor(Date.now() / 1000), nanos: (Date.now() % 1000) * 1e6 };
           }
 
-          if (key === 'audio.enabled' && typeof value === 'boolean') {
+          if (key === 'audio_enabled' && typeof value === 'boolean') {
             // Enable/disable microphone on camera/doorbell
             protobufElement.traitRequest.traitLabel = 'microphone_settings';
             protobufElement.state.type_url = 'type.nestlabs.com/nest.trait.audio.MicrophoneSettingsTrait';
